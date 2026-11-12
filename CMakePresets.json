@@ -1,0 +1,36 @@
+{
+  "version": 8,
+  "cmakeMinimumRequired": {"major": 3, "minor": 28, "patch": 0},
+  "configurePresets": [
+    {
+      "name": "windows-x64",
+      "displayName": "Windows x64 (Visual Studio 2022)",
+      "description": "OBS plugin + VST3 + tests for 64-bit Windows",
+      "binaryDir": "${sourceDir}/build_x64",
+      "condition": {"type": "equals", "lhs": "${hostSystemName}", "rhs": "Windows"},
+      "generator": "Visual Studio 17 2022",
+      "architecture": "x64,version=10.0.22621"
+    },
+    {
+      "name": "linux",
+      "displayName": "Linux x86_64 (development)",
+      "description": "Needs libobs-dev from your distribution; used for local testing",
+      "binaryDir": "${sourceDir}/build_linux",
+      "condition": {"type": "equals", "lhs": "${hostSystemName}", "rhs": "Linux"},
+      "generator": "Ninja",
+      "cacheVariables": {"CMAKE_BUILD_TYPE": "RelWithDebInfo"}
+    },
+    {
+      "name": "engine-only",
+      "displayName": "Engine + tests only (no OBS needed)",
+      "binaryDir": "${sourceDir}/build_engine",
+      "generator": "Ninja",
+      "cacheVariables": {"CMAKE_BUILD_TYPE": "RelWithDebInfo", "STAGEMIC_BUILD_OBS": false}
+    }
+  ],
+  "buildPresets": [
+    {"name": "windows-x64", "configurePreset": "windows-x64", "configuration": "RelWithDebInfo"},
+    {"name": "linux", "configurePreset": "linux"},
+    {"name": "engine-only", "configurePreset": "engine-only"}
+  ]
+}

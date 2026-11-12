@@ -1,0 +1,17 @@
+# Build output
+/build*/
+/build_*/
+/.deps/
+/release/
+/_deps/
+/cmake/.CMakeBuildNumber
+*.lock.json
+
+# Editors / OS
+.vs/
+.vscode/
+.idea/
+.DS_Store
+CMakeUserPresets.json
+/installer-out/
+/package/

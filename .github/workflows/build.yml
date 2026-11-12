@@ -1,0 +1,179 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# Builds StageMic on every push and pull request.
+#
+#  windows : builds stagemic.dll (OBS plugin) + StageMic.vst3, runs the tests,
+#            and uploads a ready-to-install zip as a downloadable "artifact".
+#  linux   : builds the same code against OBS's Linux packages, runs the tests,
+#            then loads the plugin into a real (headless) OBS and checks that
+#            audio flows through it.
+
+name: Build
+
+on:
+  push:            # every push builds and tests; a new version on main is also released
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows:
+    name: Windows x64
+    runs-on: windows-2022
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache OBS sources and dependencies
+        uses: actions/cache@v4
+        with:
+          path: .deps
+          key: obs-deps-windows-x64-${{ hashFiles('buildspec.json') }}
+
+      - name: Configure (downloads OBS + JUCE the first time; can take ~10 minutes)
+        run: cmake --preset windows-x64
+
+      - name: Build
+        run: cmake --build --preset windows-x64 --parallel
+
+      - name: Run tests
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem -Recurse build_x64 -Filter stagemic_tests.exe | Select-Object -First 1
+          if (-not $exe) { throw "stagemic_tests.exe not found" }
+          & $exe.FullName
+          if ($LASTEXITCODE -ne 0) { throw "Tests failed" }
+
+      - name: Package
+        shell: pwsh
+        run: |
+          $pkg = "package"
+          cmake --install build_x64 --config RelWithDebInfo --prefix "$pkg/obs-plugins"
+          $vst = Get-ChildItem -Recurse build_x64 -Directory -Filter StageMic.vst3 | Where-Object { $_.FullName -match 'VST3' } | Select-Object -First 1
+          New-Item -ItemType Directory -Force "$pkg/vst3" | Out-Null
+          Copy-Item -Recurse $vst.FullName "$pkg/vst3/"
+          Copy-Item docs/INSTALL.md "$pkg/INSTALL.md"
+          Copy-Item LICENSE "$pkg/LICENSE.txt"
+          Get-ChildItem -Recurse $pkg | Select-Object -ExpandProperty FullName
+
+      - name: Build installer (Inno Setup)
+        shell: pwsh
+        run: |
+          $iscc = Join-Path ${env:ProgramFiles(x86)} "Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) {
+            choco install innosetup --no-progress -y
+            if ($LASTEXITCODE -ne 0) { throw "Could not install Inno Setup" }
+          }
+          $version = (Get-Content buildspec.json -Raw | ConvertFrom-Json).version
+          & $iscc "/DAppVersion=$version" "/DSourceDir=$PWD\package" "/O$PWD\installer-out" installer\stagemic.iss
+          if ($LASTEXITCODE -ne 0) { throw "Installer build failed" }
+          Copy-Item "installer-out\StageMic-Setup-$version.exe" "installer-out\StageMic-Setup.exe"
+          Get-ChildItem installer-out
+
+      - name: Upload plugin files
+        uses: actions/upload-artifact@v4
+        with:
+          name: stagemic-windows-x64-${{ github.sha }}
+          path: package/
+          if-no-files-found: error
+
+      - name: Upload installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: stagemic-installer-${{ github.sha }}
+          path: installer-out/
+          if-no-files-found: error
+
+  release:
+    # Publishes a GitHub release automatically when main contains a version
+    # (buildspec.json) that hasn't been released yet. The release creates its own
+    # vX.Y.Z tag, so nobody has to push tags.
+    name: Publish release (new versions only)
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [windows, linux]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Is this version already released?
+        id: version
+        run: |
+          version=$(python3 -c "import json; print(json.load(open('buildspec.json'))['version'])")
+          echo "tag=v${version}" >> "$GITHUB_OUTPUT"
+          if git ls-remote --exit-code --tags origin "refs/tags/v${version}" >/dev/null; then
+            echo "v${version} is already released; nothing to do."
+            echo "new=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "v${version} is new; publishing."
+            echo "new=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - if: steps.version.outputs.new == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          name: stagemic-installer-${{ github.sha }}
+          path: release
+
+      - if: steps.version.outputs.new == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          name: stagemic-windows-x64-${{ github.sha }}
+          path: manual
+
+      - name: Zip the manual-install files
+        if: steps.version.outputs.new == 'true'
+        run: cd manual && zip -r "../release/StageMic-${{ steps.version.outputs.tag }}-windows-x64-manual.zip" .
+
+      - name: Create GitHub release
+        if: steps.version.outputs.new == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          target_commitish: ${{ github.sha }}
+          name: StageMic ${{ steps.version.outputs.tag }}
+          body_path: docs/RELEASE_NOTES.md
+          files: release/*
+
+  linux:
+    name: Linux (tests + real OBS smoke test)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install OBS and build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            ninja-build libobs-dev obs-studio ffmpeg xvfb imagemagick \
+            libasound2-dev libfreetype-dev libfontconfig1-dev libx11-dev libxcomposite-dev \
+            libxcursor-dev libxext-dev libxinerama-dev libxrandr-dev libxrender-dev libxi-dev \
+            libgl1-mesa-dev libgl1-mesa-dri
+
+      - name: Configure
+        run: cmake --preset linux
+
+      - name: Build
+        run: cmake --build --preset linux --parallel
+
+      - name: Run tests
+        run: xvfb-run -a "$(find build_linux -name stagemic_tests -type f -executable | head -1)"
+
+      - name: Load into real OBS and check audio flows
+        run: scripts/obs-smoke-test.sh build_linux/rundir/RelWithDebInfo/stagemic.so obs-smoke-output
+
+      - name: Upload smoke-test log and screenshot
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: obs-smoke-test-linux-${{ github.sha }}
+          path: |
+            obs-smoke-output/obs-log.txt
+            obs-smoke-output/obs-stdout.txt
+            obs-smoke-output/screenshot.png
+          if-no-files-found: ignore
