@@ -24,6 +24,8 @@ public:
 
     // Factory presets ---------------------------------------------------------
     static juce::StringArray getFactoryPresetNames();
+    /** "Vocal", "Tune" or "Fun voices" (for the preset menu's sections). */
+    static juce::String getFactoryPresetCategory(const juce::String& name);
     bool loadFactoryPreset(const juce::String& name);
 
     // User presets -------------------------------------------------------------

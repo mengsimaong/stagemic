@@ -135,7 +135,7 @@ jobs:
         with:
           tag_name: ${{ steps.version.outputs.tag }}
           target_commitish: ${{ github.sha }}
-          name: StageMic ${{ steps.version.outputs.tag }}
+          name: Paopoa StageMic ${{ steps.version.outputs.tag }}
           body_path: docs/RELEASE_NOTES.md
           files: release/*
 

@@ -29,7 +29,7 @@ public:
 
     //==========================================================================
     // juce::AudioProcessor
-    const juce::String getName() const override { return "StageMic"; }
+    const juce::String getName() const override { return "Paopoa StageMic"; }
 
     bool isBusesLayoutSupported(const BusesLayout& layouts) const override;
     void prepareToPlay(double sampleRate, int maximumExpectedSamplesPerBlock) override;
@@ -84,6 +84,10 @@ public:
     VoiceAnalyzer& getVoiceAnalyzer() noexcept { return voiceAnalyzer; }
     void applyVoiceSetup(const VoiceAnalyzer::Result&);
     bool hasVoiceSetup() const noexcept { return voiceSetupDone; }
+
+    /** Window layout: Simple (default) or Advanced. Saved with the OBS scene. Message thread. */
+    bool isAdvancedMode() const noexcept { return advancedMode; }
+    void setAdvancedMode(bool on) { advancedMode = on; }
     void clearVoiceSetup() { voiceSetupDone = false; }
     /** The settings kept across presets once the voice is set up. */
     static constexpr const char* micSettings[] = {pid::inGain, pid::gateThreshold, pid::dsFreq};
@@ -117,6 +121,7 @@ private:
     SpectrumTap spectrum;
     VoiceAnalyzer voiceAnalyzer;
     bool voiceSetupDone = false;
+    bool advancedMode = false;
     juce::String hostDescription{"Unknown host"};
     juce::String currentPresetName{"Clean Vocal"};
     std::atomic<double> preparedSampleRate{0.0};

@@ -185,13 +185,18 @@ public:
     void paint(juce::Graphics&) override;
     void resized() override;
     void mouseUp(const juce::MouseEvent&) override;
+    void mouseEnter(const juce::MouseEvent&) override { hover = true; repaint(); }
+    void mouseExit(const juce::MouseEvent&) override { hover = false; repaint(); }
+
+    /** Draws the darker strip behind the tabs (the open tab stands up from it). */
+    static void paintTrack(juce::Graphics&, juce::Rectangle<int> area, juce::Rectangle<int> content);
 
 private:
     juce::String title;
     std::function<void()> onSelect;
     PowerButton power;
     APVTS::ButtonAttachment attachment;
-    bool selected = false;
+    bool selected = false, hover = false;
 };
 
 /** EQ / Multiband display with tabs. */

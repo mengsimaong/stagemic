@@ -653,6 +653,8 @@ ModuleTab::ModuleTab(APVTS& s, const char* enableParam, juce::String t, std::fun
     power.setTooltip("Switch " + title + " on or off");
     power.onStateChange = [this] { repaint(); };
     addAndMakeVisible(power);
+    setMouseCursor(juce::MouseCursor::PointingHandCursor);
+    setTooltip("Click to show " + title + ". The square switches it on or off.");
 }
 
 void ModuleTab::setSelected(bool s)
@@ -661,24 +663,51 @@ void ModuleTab::setSelected(bool s)
     repaint();
 }
 
+// Folder tabs: the open tab has the same colour as the panel below it (one surface),
+// while the strip behind the tabs is darker, so the open tab stands up from it. The
+// other tabs sit in the dark strip and light up under the mouse.
+namespace
+{
+const juce::Colour cardColour = theme::panel;
+}
+
+void ModuleTab::paintTrack(juce::Graphics& g, juce::Rectangle<int> strip, juce::Rectangle<int>)
+{
+    const auto r = strip.toFloat();
+    juce::Path p;
+    p.addRoundedRectangle(r.getX(), r.getY(), r.getWidth(), r.getHeight(), 6.0f, 6.0f, true, true, false, false);
+    g.setColour(theme::background);
+    g.fillPath(p);
+}
+
 void ModuleTab::paint(juce::Graphics& g)
 {
-    auto r = getLocalBounds().toFloat();
+    const bool on = power.getToggleState();
+    const auto t = getLocalBounds().toFloat().withTrimmedLeft(1.0f).withTrimmedRight(1.0f);
+    juce::Path p;
     if (selected)
     {
-        g.setColour(theme::panelRaised);
-        g.fillRoundedRectangle(r.withTrimmedBottom(2.0f), 5.0f);
-        g.setColour(theme::accent);
-        g.fillRect(r.removeFromBottom(2.0f).reduced(6.0f, 0.0f));
+        // Reaches 2 px into the card below, so there's no seam between them.
+        p.addRoundedRectangle(t.getX(), t.getY(), t.getWidth(), t.getHeight() + 2.0f, 7.0f, 7.0f, true, true, false, false);
+        g.setColour(cardColour);
     }
-    g.setColour(selected ? theme::text : theme::dimText);
+    else
+    {
+        const auto u = t.withTrimmedTop(3.0f).withTrimmedBottom(2.0f);
+        p.addRoundedRectangle(u.getX(), u.getY(), u.getWidth(), u.getHeight(), 7.0f, 7.0f, true, true, false, false);
+        g.setColour(hover ? theme::panelRaised : theme::panelOff);
+    }
+    g.fillPath(p);
+
+    // An effect that is on stays readable even when its tab isn't open.
+    g.setColour(selected || hover ? theme::text : (on ? theme::text.withAlpha(0.72f) : theme::dimText));
     g.setFont(theme::font(12.0f, true));
-    g.drawFittedText(title.toUpperCase(), getLocalBounds().withTrimmedLeft(30).withTrimmedRight(6), juce::Justification::centredLeft, 1, 0.8f);
+    g.drawFittedText(title.toUpperCase(), getLocalBounds().withTrimmedLeft(28).withTrimmedRight(4), juce::Justification::centredLeft, 1, 0.65f);
 }
 
 void ModuleTab::resized()
 {
-    power.setBounds(6, getHeight() / 2 - 10, 22, 20);
+    power.setBounds(5, getHeight() / 2 - 10, 22, 20);
 }
 
 void ModuleTab::mouseUp(const juce::MouseEvent& e)
@@ -931,6 +960,10 @@ void DisplayPanel::paint(juce::Graphics& g)
     g.fillRoundedRectangle(r, 6.0f);
     g.setColour(theme::outline);
     g.drawRoundedRectangle(r, 6.0f, 1.0f);
+    {
+        const auto strip = getLocalBounds().reduced(1).withBottom(eqTab.getBottom());
+        ModuleTab::paintTrack(g, strip, {});
+    }
     g.setColour(theme::faintText);
     g.setFont(theme::font(10.5f));
     if (current != 2)
@@ -939,12 +972,12 @@ void DisplayPanel::paint(juce::Graphics& g)
 
 void DisplayPanel::resized()
 {
-    auto top = getLocalBounds().removeFromTop(30).reduced(6, 3);
-    eqTab.setBounds(top.removeFromLeft(80));
+    auto top = getLocalBounds().removeFromTop(32).reduced(10, 5);
+    eqTab.setBounds(top.removeFromLeft(84));
     top.removeFromLeft(4);
-    mbTab.setBounds(top.removeFromLeft(130));
+    mbTab.setBounds(top.removeFromLeft(128));
     top.removeFromLeft(4);
-    tuneTab.setBounds(top.removeFromLeft(90));
+    tuneTab.setBounds(top.removeFromLeft(94));
 
     auto body = getLocalBounds().withTrimmedTop(30).reduced(4, 2);
     const auto fieldsArea = body.removeFromBottom(fieldRowHeight).reduced(4, 4);

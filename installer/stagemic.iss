@@ -20,13 +20,11 @@
 
 [Setup]
 AppId={{6B3D2E4A-8C1F-4F7B-9E2D-5A1C7B3E9F40}
-AppName=StageMic
+AppName=Paopoa StageMic
 AppVersion={#AppVersion}
-AppVerName=StageMic {#AppVersion}
-AppPublisher=StageMic contributors
-AppPublisherURL=https://github.com/mengsimaong/stagemic
-AppSupportURL=https://github.com/mengsimaong/stagemic/issues
-UninstallDisplayName=StageMic for OBS Studio
+AppVerName=Paopoa StageMic {#AppVersion}
+AppPublisher=mengsimaong
+UninstallDisplayName=Paopoa StageMic for OBS Studio
 DefaultDirName={commonappdata}\StageMic
 DisableDirPage=yes
 DisableProgramGroupPage=yes
@@ -44,13 +42,13 @@ CloseApplications=no
 SetupLogging=yes
 
 [Types]
-Name: "standard"; Description: "StageMic for OBS Studio"
-Name: "full"; Description: "StageMic for OBS Studio + VST3 plugin for music apps"
+Name: "standard"; Description: "Paopoa StageMic for OBS Studio"
+Name: "full"; Description: "Paopoa StageMic for OBS Studio + VST3 plugin for music apps"
 Name: "custom"; Description: "Custom"; Flags: iscustom
 
 [Components]
-Name: "obs"; Description: "StageMic for OBS Studio"; Types: standard full custom; Flags: fixed
-Name: "vst3"; Description: "StageMic VST3 (optional, for music apps such as Reaper)"; Types: full
+Name: "obs"; Description: "Paopoa StageMic for OBS Studio"; Types: standard full custom; Flags: fixed
+Name: "vst3"; Description: "Paopoa StageMic VST3 (optional, for music apps such as Reaper)"; Types: full
 
 [Files]
 Source: "{#SourceDir}\obs-plugins\stagemic\bin\64bit\*"; DestDir: "{code:PluginBinDir}"; Components: obs; Flags: ignoreversion
@@ -71,7 +69,7 @@ Root: HKLM; Subkey: "Software\StageMic"; ValueType: string; ValueName: "ObsFolde
 Root: HKLM; Subkey: "Software\StageMic"; ValueType: string; ValueName: "Version"; ValueData: "{#AppVersion}"; Flags: uninsdeletekey
 
 [Messages]
-FinishedLabel=StageMic is installed.%n%nStart OBS, open your microphone's Filters (the three-dots menu next to it in the Audio Mixer), click + and choose StageMic.
+FinishedLabel=Paopoa StageMic is installed.%n%nStart OBS, open your microphone's Filters (the three-dots menu next to it in the Audio Mixer), click + and choose Paopoa StageMic.
 
 [Code]
 var
@@ -218,7 +216,7 @@ end;
 function UpdateReadyMemo(Space, NewLine, MemoUserInfoInfo, MemoDirInfo, MemoTypeInfo,
   MemoComponentsInfo, MemoGroupInfo, MemoTasksInfo: String): String;
 begin
-  Result := 'StageMic will be installed into:' + NewLine + Space + PluginBinDir('') + NewLine;
+  Result := 'Paopoa StageMic will be installed into:' + NewLine + Space + PluginBinDir('') + NewLine;
   if MemoComponentsInfo <> '' then
     Result := Result + NewLine + MemoComponentsInfo;
 end;

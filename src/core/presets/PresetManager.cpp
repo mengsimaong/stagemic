@@ -21,6 +21,7 @@ struct FactoryPreset
 {
     const char* name;
     std::vector<Setting> settings; // anything not listed uses its default
+    const char* category = "Vocal";
 };
 
 // clang-format off
@@ -74,7 +75,7 @@ const std::vector<FactoryPreset> factoryPresets = {
         {pid::chOn, 1.0f}, {pid::chDepth, 20.0f}, {pid::chMix, 12.0f},
         {pid::dlyOn, 1.0f}, {pid::dlyTime, 230.0f}, {pid::dlyFeedback, 28.0f}, {pid::dlyMix, 12.0f},
         {pid::revSize, 60.0f}, {pid::revMix, 20.0f},
-    }},
+    }, "Tune"},
 
     {"Pop Tune", {
         {pid::eqTameRange, 4.0f}, {pid::tuneOn, 1.0f}, {pid::tuneSpeed, 12.0f},
@@ -84,7 +85,7 @@ const std::vector<FactoryPreset> factoryPresets = {
         {pid::exOn, 1.0f},
         {pid::chOn, 1.0f}, {pid::chDepth, 25.0f}, {pid::chMix, 14.0f},
         {pid::revSize, 55.0f}, {pid::revMix, 20.0f},
-    }},
+    }, "Tune"},
 
     {"Melodic Tune", {
         {pid::eqTameRange, 4.0f}, {pid::tuneOn, 1.0f}, {pid::tuneSpeed, 35.0f},
@@ -93,7 +94,66 @@ const std::vector<FactoryPreset> factoryPresets = {
         {pid::satOn, 1.0f}, {pid::satDrive, 6.0f}, {pid::satMix, 30.0f},
         {pid::dlyOn, 1.0f}, {pid::dlyTime, 330.0f}, {pid::dlyFeedback, 30.0f}, {pid::dlyTone, 4000.0f}, {pid::dlyMix, 15.0f},
         {pid::revSize, 75.0f}, {pid::revMix, 22.0f},
-    }},
+    }, "Tune"},
+
+    // Fun voices
+    {"Chipmunk", {
+        {pid::tuneOn, 1.0f}, {pid::tuneAmount, 0.0f}, {pid::tuneTranspose, 7.0f}, {pid::tuneFormant, 4.0f},
+        {pid::eqHighGain, 3.0f}, {pid::revMix, 12.0f}, {pid::revSize, 40.0f},
+    }, "Fun voices"},
+
+    {"Deep Monster", {
+        {pid::tuneOn, 1.0f}, {pid::tuneAmount, 0.0f}, {pid::tuneTranspose, -7.0f}, {pid::tuneFormant, -5.0f},
+        {pid::eqLowFreq, 150.0f}, {pid::eqLowGain, 4.0f}, {pid::eqHighGain, -2.0f},
+        {pid::satOn, 1.0f}, {pid::satDrive, 10.0f}, {pid::satMix, 40.0f},
+        {pid::revSize, 80.0f}, {pid::revDamping, 70.0f}, {pid::revMix, 22.0f},
+    }, "Fun voices"},
+
+    {"Robot", {
+        {pid::tuneOn, 1.0f}, {pid::tuneSpeed, 0.0f}, {pid::tuneScale, 7.0f}, {pid::tuneFormant, -1.0f},
+        {pid::eqLowCut, 150.0f}, {pid::eqMidFreq, 2000.0f}, {pid::eqMidGain, 3.0f},
+        {pid::chOn, 1.0f}, {pid::chRate, 4.0f}, {pid::chDepth, 60.0f}, {pid::chMix, 35.0f},
+        {pid::dlyOn, 1.0f}, {pid::dlyTime, 30.0f}, {pid::dlyFeedback, 55.0f}, {pid::dlyMix, 18.0f}, {pid::dlyDuck, 0.0f},
+        {pid::revMix, 10.0f},
+    }, "Fun voices"},
+
+    {"Telephone", {
+        {pid::eqLowCut, 400.0f}, {pid::eqHighFreq, 3000.0f}, {pid::eqHighGain, -12.0f},
+        {pid::eqMidFreq, 1500.0f}, {pid::eqMidGain, 6.0f}, {pid::eqMidQ, 0.8f},
+        {pid::satOn, 1.0f}, {pid::satModel, 2.0f}, {pid::satDrive, 12.0f}, {pid::satMix, 60.0f},
+        {pid::compRatio, 6.0f}, {pid::compThreshold, -26.0f}, {pid::compMakeup, 4.5f},
+        {pid::revOn, 0.0f},
+    }, "Fun voices"},
+
+    {"Megaphone", {
+        {pid::eqLowCut, 400.0f}, {pid::eqHighFreq, 4000.0f}, {pid::eqHighGain, -12.0f},
+        {pid::eqMidFreq, 2000.0f}, {pid::eqMidGain, 9.0f}, {pid::eqMidQ, 1.2f},
+        {pid::satOn, 1.0f}, {pid::satDrive, 20.0f}, {pid::satMix, 100.0f},
+        {pid::compRatio, 8.0f}, {pid::compThreshold, -28.0f}, {pid::compMakeup, 8.0f},
+        {pid::revSize, 30.0f}, {pid::revMix, 10.0f},
+    }, "Fun voices"},
+
+    {"Bathroom", {
+        {pid::revSize, 25.0f}, {pid::revDamping, 10.0f}, {pid::revPreDelay, 5.0f}, {pid::revMix, 40.0f},
+        {pid::revLowCut, 150.0f}, {pid::revHighCut, 12000.0f}, {pid::revDuck, 0.0f},
+    }, "Fun voices"},
+
+    {"Concert Hall", {
+        {pid::eqHighGain, 3.0f},
+        {pid::revSize, 95.0f}, {pid::revDamping, 40.0f}, {pid::revPreDelay, 60.0f}, {pid::revMix, 30.0f}, {pid::revDuck, 2.0f},
+        {pid::dlyOn, 1.0f}, {pid::dlyTime, 380.0f}, {pid::dlyFeedback, 20.0f}, {pid::dlyMix, 8.0f},
+    }, "Fun voices"},
+
+    {"Cave Echo", {
+        {pid::dlyOn, 1.0f}, {pid::dlyTime, 600.0f}, {pid::dlyFeedback, 60.0f}, {pid::dlyTone, 3000.0f}, {pid::dlyMix, 30.0f}, {pid::dlyDuck, 0.0f},
+        {pid::revSize, 85.0f}, {pid::revDamping, 70.0f}, {pid::revMix, 30.0f}, {pid::revDuck, 0.0f},
+    }, "Fun voices"},
+
+    {"Alien", {
+        {pid::tuneOn, 1.0f}, {pid::tuneAmount, 0.0f}, {pid::tuneTranspose, -3.0f}, {pid::tuneFormant, 5.0f},
+        {pid::chOn, 1.0f}, {pid::chRate, 2.5f}, {pid::chDepth, 100.0f}, {pid::chMix, 40.0f},
+        {pid::revSize, 70.0f}, {pid::revMix, 25.0f},
+    }, "Fun voices"},
 };
 // clang-format on
 
@@ -118,6 +178,14 @@ juce::File PresetManager::defaultPresetDirectory()
 }
 
 //==============================================================================
+juce::String PresetManager::getFactoryPresetCategory(const juce::String& name)
+{
+    for (const auto& p : factoryPresets)
+        if (name == p.name)
+            return p.category;
+    return {};
+}
+
 juce::StringArray PresetManager::getFactoryPresetNames()
 {
     juce::StringArray names;

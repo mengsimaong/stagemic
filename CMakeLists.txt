@@ -96,6 +96,10 @@ set(
   src/ui/PresetBar.cpp
   src/ui/PresetBar.h
   src/ui/ChainBar.cpp
+  src/ui/NeonCat.cpp
+  src/ui/NeonCat.h
+  src/ui/SimpleView.cpp
+  src/ui/SimpleView.h
   src/ui/ChainBar.h
   src/ui/StageMicEditor.cpp
   src/ui/StageMicEditor.h

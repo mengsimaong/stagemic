@@ -38,7 +38,7 @@ public:
     int getLatencySamples() const noexcept { return delay; }
 
     /** Scales as pitch-class masks (bit n = n semitones above the key). */
-    static constexpr std::array<uint16_t, 7> scaleMasks{
+    static constexpr std::array<uint16_t, 8> scaleMasks{
         0xFFF,                                                  // Chromatic
         (1 << 0) | (1 << 2) | (1 << 4) | (1 << 5) | (1 << 7) | (1 << 9) | (1 << 11), // Major
         (1 << 0) | (1 << 2) | (1 << 3) | (1 << 5) | (1 << 7) | (1 << 8) | (1 << 10), // Minor
@@ -46,6 +46,7 @@ public:
         (1 << 0) | (1 << 2) | (1 << 4) | (1 << 7) | (1 << 9),                        // Major pentatonic
         (1 << 0) | (1 << 3) | (1 << 5) | (1 << 7) | (1 << 10),                       // Minor pentatonic
         (1 << 0) | (1 << 3) | (1 << 5) | (1 << 6) | (1 << 7) | (1 << 10),            // Blues
+        (1 << 0),                                                                     // Robot: one note
     };
     /** Nearest note (MIDI number) of the scale to a pitch. */
     static int nearestNote(float midi, int key, uint16_t mask) noexcept;

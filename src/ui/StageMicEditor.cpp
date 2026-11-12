@@ -40,12 +40,19 @@ StageMicEditor::StageMicEditor(StageMicProcessor& p)
             "SPACE  (parallel effects)", 2, 4)
     , limiter(p.getParameters(), ModuleId::Limiter, {{pid::limCeiling, "Ceiling"}, {pid::limRelease, "Release"}}, true)
     , master(p.getParameters())
+    , simple(p.getParameters(), p.getChain().getTune())
     , voiceSetup(p)
 {
     for (auto* c : std::initializer_list<juce::Component*>{&presetBar, &chainBar, &display, &gate, &deEsser, &compressor, &color,
                                                            &space, &limiter, &master})
         content.addAndMakeVisible(c);
+    content.addChildComponent(simple);
+    content.addAndMakeVisible(cat);
     content.addAndMakeVisible(flash);
+    presetBar.onModeChanged = [this](bool advanced) {
+        processor.setAdvancedMode(advanced);
+        applyMode(advanced);
+    };
     content.addChildComponent(voiceSetup);
     presetBar.onSetUpVoice = [this] { voiceSetup.open(); };
     chainBar.onModuleClicked = [this](ModuleId id) { showModule(id); };
@@ -59,12 +66,12 @@ StageMicEditor::StageMicEditor(StageMicProcessor& p)
     presetBar.setBounds(m, 0, designWidth - 2 * m, 48);
     chainBar.setBounds(m, 48, designWidth - 2 * m, 34);
     constexpr int top = 88;
-    master.setBounds(designWidth - m - 180, top, 180, designHeight - top - m);
+    master.setBounds(designWidth - m - 180, top, 180, bodyBottom - top);
 
     const int left = m, right = master.getX() - gap;
     display.setBounds(left, top, right - left, 250 + DisplayPanel::fieldRowHeight + 8);
 
-    const int stripsTop = display.getBottom() + gap, stripsH = designHeight - m - stripsTop;
+    const int stripsTop = display.getBottom() + gap, stripsH = bodyBottom - stripsTop;
     int x = left;
     for (auto [c, w] : {std::pair<juce::Component*, int>{&gate, 118}, {&deEsser, 118}, {&compressor, 206}, {&color, 172}})
     {
@@ -76,6 +83,8 @@ StageMicEditor::StageMicEditor(StageMicProcessor& p)
     space.setBounds(x, stripsTop, right - x, stripsH - limiterH - gap);
     limiter.setBounds(x, space.getBottom() + gap, right - x, limiterH);
 
+    simple.setBounds(left, 56, right - left, bodyBottom - 56);
+    cat.setBounds(0, bodyBottom, designWidth, footerHeight);
     content.setSize(designWidth, designHeight);
     flash.setBounds(0, 0, designWidth, designHeight);
     flash.toFront(false);
@@ -84,6 +93,7 @@ StageMicEditor::StageMicEditor(StageMicProcessor& p)
     setResizable(true, true);
     getConstrainer()->setFixedAspectRatio((double)designWidth / designHeight);
     setResizeLimits(designWidth * 7 / 10, designHeight * 7 / 10, designWidth * 2, designHeight * 2);
+    applyMode(processor.isAdvancedMode());
     setSize(designWidth, designHeight);
     startTimerHz(30);
 }
@@ -103,6 +113,17 @@ void StageMicEditor::resized()
 {
     const float scale = (float)getWidth() / (float)designWidth;
     content.setTransform(juce::AffineTransform::scale(scale));
+}
+
+void StageMicEditor::applyMode(bool advanced)
+{
+    presetBar.setMode(advanced);
+    for (auto* c : std::initializer_list<juce::Component*>{&chainBar, &display, &gate, &deEsser, &compressor, &color, &space, &limiter})
+        c->setVisible(advanced);
+    simple.setVisible(!advanced);
+    // Simple mode has no chain bar: the meters start right under the header.
+    const int top = advanced ? 88 : 56;
+    master.setBounds(master.getX(), top, master.getWidth(), bodyBottom - top);
 }
 
 void StageMicEditor::showModule(ModuleId id)
@@ -152,7 +173,10 @@ void StageMicEditor::refreshFromProcessor(bool evenIfHidden)
     const bool tuning = chain.isModuleActive(ModuleId::Tune);
     master.setStatus(juce::String(processor.getPreparedSampleRate() / 1000.0, 1) + " kHz  |  latency "
                      + (tuning ? (oversampling ? "20.1 ms" : "20 ms") : (oversampling ? "0.1 ms" : "0 ms"))
-                     + "\nStageMic v" STAGEMIC_VERSION);
+                     + "\nPaopoa StageMic v" STAGEMIC_VERSION);
+    if (simple.isVisible())
+        simple.tick();
+    cat.advance();
     display.tick(activity);
     for (auto* s : std::initializer_list<Section*>{&gate, &deEsser, &compressor, &limiter})
         s->updateActivity(activity);

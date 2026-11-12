@@ -140,6 +140,7 @@ void StageMicProcessor::getStateInformation(juce::MemoryBlock& destData)
     state.setProperty("preset", currentPresetName, nullptr);
     state.setProperty("order", dsp::VocalChain::orderToString(chain.getOrder()), nullptr);
     state.setProperty("voiceSetup", voiceSetupDone, nullptr);
+    state.setProperty("advanced", advancedMode, nullptr);
     state.appendChild(parameters.copyState(), nullptr);
 
     if (auto xml = state.createXml())
@@ -166,6 +167,7 @@ void StageMicProcessor::setStateInformation(const void* data, int sizeInBytes)
     applySoundTree(params, order);
 
     voiceSetupDone = (bool)state.getProperty("voiceSetup", false);
+    advancedMode = (bool)state.getProperty("advanced", false);
     if (state.hasProperty("preset"))
         currentPresetName = state.getProperty("preset").toString();
 

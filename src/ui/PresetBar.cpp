@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 #include "ui/PresetBar.h"
+#include "ui/NeonCat.h"
 
 #include "core/presets/PresetManager.h"
 #include "ui/Theme.h"
@@ -21,6 +22,17 @@ PresetBar::PresetBar(StageMicProcessor& p)
     saveButton.onClick = [this] { save(); };
     menuButton.onClick = [this] { showMenu(); };
     voiceButton.setTooltip("Measure your mic and voice for about 11 seconds, then set Input Gain, Gate and De-Ess to match");
+    for (auto* b : {&simpleButton, &advancedButton})
+    {
+        b->setClickingTogglesState(false);
+        b->getProperties().set("bold", true);
+        b->setConnectedEdges(b == &simpleButton ? juce::Button::ConnectedOnRight : juce::Button::ConnectedOnLeft);
+        addAndMakeVisible(b);
+    }
+    simpleButton.setTooltip("Simple: just the controls that matter most");
+    advancedButton.setTooltip("Advanced: every module, the EQ graph, the signal chain and all settings");
+    simpleButton.onClick = [this] { setMode(false); if (onModeChanged) onModeChanged(false); };
+    advancedButton.onClick = [this] { setMode(true); if (onModeChanged) onModeChanged(true); };
     voiceButton.getProperties().set("primary", true);
     voiceButton.setColour(juce::TextButton::textColourOffId, juce::Colours::white);
     voiceButton.onClick = [this] {
@@ -46,11 +58,22 @@ void PresetBar::refresh()
         entries.add({file.getFileNameWithoutExtension(), file});
 
     box.clear(juce::dontSendNotification);
-    box.addSectionHeading("Factory");
     int i = 0;
     bool userHeading = false;
+    juce::String category;
     for (const auto& e : entries)
     {
+        if (e.file == juce::File())
+        {
+            const auto c = PresetManager::getFactoryPresetCategory(e.name);
+            if (c != category)
+            {
+                if (category.isNotEmpty())
+                    box.addSeparator();
+                box.addSectionHeading(c);
+                category = c;
+            }
+        }
         if (e.file != juce::File() && !userHeading)
         {
             box.addSeparator();
@@ -286,20 +309,39 @@ void PresetBar::StatusTimer::timerCallback()
     }
 }
 
+void PresetBar::setMode(bool advanced)
+{
+    simpleButton.setToggleState(!advanced, juce::dontSendNotification);
+    advancedButton.setToggleState(advanced, juce::dontSendNotification);
+    simpleButton.getProperties().set("primary", !advanced);
+    advancedButton.getProperties().set("primary", advanced);
+    for (auto* b : {&simpleButton, &advancedButton})
+    {
+        b->setColour(juce::TextButton::textColourOffId, b->getToggleState() ? juce::Colours::white : theme::dimText);
+        b->repaint();
+    }
+}
+
 void PresetBar::paint(juce::Graphics& g)
 {
+    auto logo = getLocalBounds().removeFromLeft(196).withTrimmedLeft(2).reduced(0, 4);
+    neoncat::paintHead(g, logo.removeFromLeft(38).toFloat().reduced(1.0f, 2.0f), theme::accent);
+    logo.removeFromLeft(4);
+    g.setColour(theme::accentSoft);
+    g.setFont(theme::font(11.0f, true).withKerningFactor(0.25f));
+    g.drawText("PAOPOA", logo.removeFromTop(13), juce::Justification::bottomLeft);
     g.setColour(theme::accent);
     g.setFont(theme::font(24.0f, true));
-    g.drawText("StageMic", getLocalBounds().removeFromLeft(150).withTrimmedLeft(4), juce::Justification::centredLeft);
+    g.drawText("StageMic", logo, juce::Justification::centredLeft);
 }
 
 void PresetBar::resized()
 {
     auto area = getLocalBounds().reduced(0, 7);
-    area.removeFromLeft(160);
+    area.removeFromLeft(200);
     prev.setBounds(area.removeFromLeft(30));
     area.removeFromLeft(4);
-    box.setBounds(area.removeFromLeft(320));
+    box.setBounds(area.removeFromLeft(286));
     area.removeFromLeft(4);
     next.setBounds(area.removeFromLeft(30));
     area.removeFromLeft(10);
@@ -308,6 +350,9 @@ void PresetBar::resized()
     menuButton.setBounds(area.removeFromLeft(36));
     area.removeFromLeft(12);
     voiceButton.setBounds(area.removeFromRight(150));
+    area.removeFromRight(12);
+    advancedButton.setBounds(area.removeFromRight(86));
+    simpleButton.setBounds(area.removeFromRight(70));
     area.removeFromRight(10);
     status.setBounds(area);
 }

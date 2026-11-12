@@ -185,6 +185,10 @@ public:
         g.drawRoundedRectangle(r, 5.0f, 1.0f);
     }
 
-    juce::Font getTextButtonFont(juce::TextButton&, int) override { return font(13.0f); }
+    juce::Font getTextButtonFont(juce::TextButton& b, int) override
+    {
+        const bool bold = (bool)b.getProperties().getWithDefault("bold", false);
+        return bold ? juce::Font(font(13.5f, true).withKerningFactor(0.06f)) : juce::Font(font(13.0f));
+    }
 };
 } // namespace stagemic::theme

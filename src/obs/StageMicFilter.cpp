@@ -160,7 +160,7 @@ void save(void* ptr, obs_data_t* settings)
 
 juce::String makeWindowTitle(obs_source_t* filter)
 {
-    juce::String title = "StageMic";
+    juce::String title = "Paopoa StageMic";
     if (auto* parent = obs_filter_get_parent(filter))
         if (const char* name = obs_source_get_name(parent))
             title << " - " << juce::String::fromUTF8(name);
@@ -197,12 +197,12 @@ obs_properties_t* getProperties(void* ptr)
     if (auto* data = static_cast<FilterData*>(ptr); data != nullptr && data->instance != nullptr)
     {
         auto& proc = data->instance->getProcessor();
-        info << "StageMic " STAGEMIC_VERSION " - " << juce::String(proc.getPreparedSampleRate(), 0) << " Hz, "
+        info << "Paopoa StageMic " STAGEMIC_VERSION " - " << juce::String(proc.getPreparedSampleRate(), 0) << " Hz, "
              << data->instance->getProcessedChannelCount() << " ch, latency " << proc.getLatencySamples() << " samples";
     }
     else
     {
-        info << "StageMic " STAGEMIC_VERSION;
+        info << "Paopoa StageMic " STAGEMIC_VERSION;
     }
 
     auto* infoProp = obs_properties_add_text(props, infoKey, info.toRawUTF8(), OBS_TEXT_INFO);

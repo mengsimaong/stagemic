@@ -235,7 +235,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout()
         juce::StringArray{"C", "C#", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B"}, 0));
     layout.add(std::make_unique<juce::AudioParameterChoice>(
         juce::ParameterID{pid::tuneScale, 1}, "Tune Scale",
-        juce::StringArray{"Chromatic", "Major", "Minor", "Harmonic Minor", "Major Pentatonic", "Minor Pentatonic", "Blues"}, 0));
+        juce::StringArray{"Chromatic", "Major", "Minor", "Harmonic Minor", "Major Pentatonic", "Minor Pentatonic", "Blues", "Robot (one note)"}, 0));
     layout.add(std::make_unique<juce::AudioParameterChoice>(juce::ParameterID{pid::tuneVoice, 1}, "Tune Voice",
                                                             juce::StringArray{"High", "Mid", "Low"}, 1));
     layout.add(std::make_unique<juce::AudioParameterInt>(

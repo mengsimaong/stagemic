@@ -4,6 +4,8 @@
 #include "core/StageMicProcessor.h"
 #include "ui/ChainBar.h"
 #include "ui/VoiceSetup.h"
+#include "ui/SimpleView.h"
+#include "ui/NeonCat.h"
 #include "ui/Displays.h"
 #include "ui/MasterPanel.h"
 #include "ui/PresetBar.h"
@@ -23,7 +25,9 @@ class StageMicEditor final
 {
 public:
     static constexpr int designWidth = 1120;
-    static constexpr int designHeight = 800;
+    static constexpr int designHeight = 832;
+    static constexpr int footerHeight = 32; // where the cat walks
+    static constexpr int bodyBottom = designHeight - footerHeight;
 
     explicit StageMicEditor(StageMicProcessor&);
     ~StageMicEditor() override;
@@ -62,6 +66,7 @@ private:
         float alpha = 0.0f;
     };
     void showModule(ModuleId);
+    void applyMode(bool advanced);
 
     juce::Component content;
     Flash flash;
@@ -76,6 +81,8 @@ private:
     TabbedModules space;
     EffectRow limiter;
     MasterPanel master;
+    SimpleView simple;
+    NeonCatStrip cat;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(StageMicEditor)
 };

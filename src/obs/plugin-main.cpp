@@ -10,11 +10,11 @@
 
 OBS_DECLARE_MODULE()
 OBS_MODULE_USE_DEFAULT_LOCALE("stagemic", "en-US")
-OBS_MODULE_AUTHOR("StageMic contributors")
+OBS_MODULE_AUTHOR("mengsimaong")
 
 MODULE_EXPORT const char* obs_module_name(void)
 {
-    return "StageMic";
+    return "Paopoa StageMic";
 }
 
 MODULE_EXPORT const char* obs_module_description(void)

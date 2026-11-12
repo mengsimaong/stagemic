@@ -22,6 +22,9 @@ public:
     /** Called after any preset is loaded (the module order may have changed). */
     std::function<void()> onPresetLoaded;
     std::function<void()> onSetUpVoice;
+    /** Simple / Advanced switch. */
+    std::function<void(bool advanced)> onModeChanged;
+    void setMode(bool advanced);
 
 private:
     struct Entry
@@ -46,6 +49,7 @@ private:
     juce::Array<Entry> entries;
     juce::ComboBox box;
     juce::TextButton prev{"<"}, next{">"}, saveButton{"Save"}, menuButton{"..."}, voiceButton{"Set up my voice"};
+    juce::TextButton simpleButton{"SIMPLE"}, advancedButton{"ADVANCED"};
     juce::Label status;
     std::unique_ptr<juce::FileChooser> chooser;
     int statusTicks = 0;

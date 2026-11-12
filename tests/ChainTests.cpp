@@ -1171,6 +1171,18 @@ private:
             expect(!VoiceAnalyzer::evaluate(silent->getVoiceAnalyzer().getMeasurements()).heardVoice, "no voice, no changes");
         }
 
+        beginTest("Simple / Advanced mode is remembered, and Simple is the default");
+        {
+            auto p = makeProcessor();
+            expect(!p->isAdvancedMode(), "Simple by default");
+            p->setAdvancedMode(true);
+            juce::MemoryBlock saved;
+            p->getStateInformation(saved);
+            auto q = makeProcessor();
+            q->setStateInformation(saved.getData(), (int)saved.getSize());
+            expect(q->isAdvancedMode(), "Advanced is remembered");
+        }
+
         beginTest("CPU: the whole chain is lightweight");
 
         auto p = makeProcessor();

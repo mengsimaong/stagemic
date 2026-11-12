@@ -1,4 +1,4 @@
-# StageMic
+# Paopoa StageMic
 
 **One OBS filter, one window: a clean, fun karaoke mic for streamers and VTubers.**
 No DAW, and no stack of ten separate OBS filters.

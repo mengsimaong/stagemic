@@ -240,6 +240,9 @@ void TabbedModules::paint(juce::Graphics& g)
     g.setColour(theme::outline);
     g.drawRoundedRectangle(r, 6.0f, 1.0f);
 
+    if (!pages.empty())
+        ModuleTab::paintTrack(g, getLocalBounds().reduced(1).withBottom(pages.front().tab->getBottom()), {});
+
     g.setColour(theme::faintText);
     g.setFont(theme::font(10.5f));
     g.drawFittedText(footer, getLocalBounds().removeFromBottom(18).reduced(8, 0), juce::Justification::centredRight, 1, 0.7f);
@@ -251,12 +254,12 @@ void TabbedModules::resized()
         return;
 
     auto area = getLocalBounds().reduced(6, 4);
-    auto tabs = area.removeFromTop(28);
+    auto tabs = area.removeFromTop(32).reduced(3, 3);
     const int tabW = tabs.getWidth() / (int)pages.size();
     for (auto& p : pages)
         p.tab->setBounds(tabs.removeFromLeft(tabW).reduced(1, 0));
 
-    area.removeFromTop(6);
+    area.removeFromTop(4);
     area.removeFromBottom(16);
     auto& controls = pages[(size_t)current].controls;
     if (controls.empty())
