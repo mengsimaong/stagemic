@@ -4,6 +4,7 @@
 #include "core/LevelMeter.h"
 #include "core/Parameters.h"
 #include "core/SpectrumTap.h"
+#include "core/VoiceAnalyzer.h"
 #include "core/dsp/VocalChain.h"
 
 #include <juce_audio_processors/juce_audio_processors.h>
@@ -55,7 +56,7 @@ public:
 
     //==========================================================================
     // StageMic-specific
-    static constexpr int stateVersion = 2;
+    static constexpr int stateVersion = 3;
     static constexpr const char* stateTag = "StageMicState";
     static constexpr const char* presetTag = "StageMicPreset";
     static constexpr int presetFormatVersion = 1;
@@ -77,6 +78,15 @@ public:
     void setCurrentPresetName(const juce::String& name) { currentPresetName = name; }
 
     SpectrumTap& getSpectrumTap() noexcept { return spectrum; }
+
+    /** "Set up my voice". Once applied, the mic settings it chose (input gain, gate
+        threshold, de-esser frequency) stay as they are when presets change. */
+    VoiceAnalyzer& getVoiceAnalyzer() noexcept { return voiceAnalyzer; }
+    void applyVoiceSetup(const VoiceAnalyzer::Result&);
+    bool hasVoiceSetup() const noexcept { return voiceSetupDone; }
+    void clearVoiceSetup() { voiceSetupDone = false; }
+    /** The settings kept across presets once the voice is set up. */
+    static constexpr const char* micSettings[] = {pid::inGain, pid::gateThreshold, pid::dsFreq};
     LevelMeter& getInputMeter() noexcept { return inputMeter; }
     LevelMeter& getOutputMeter() noexcept { return outputMeter; }
 
@@ -89,6 +99,9 @@ public:
 
 private:
     void applySoundTree(const juce::ValueTree& params, const juce::String& order);
+    std::array<float, 3> captureMicSettings();
+    void restoreMicSettings(const std::array<float, 3>&);
+    void setParameterValue(const char* id, float value);
     static float peakOf(float* const* ch, int numChannels, int n) noexcept;
 
     juce::AudioProcessorValueTreeState parameters;
@@ -102,6 +115,8 @@ private:
     LevelMeter inputMeter;
     LevelMeter outputMeter;
     SpectrumTap spectrum;
+    VoiceAnalyzer voiceAnalyzer;
+    bool voiceSetupDone = false;
     juce::String hostDescription{"Unknown host"};
     juce::String currentPresetName{"Clean Vocal"};
     std::atomic<double> preparedSampleRate{0.0};

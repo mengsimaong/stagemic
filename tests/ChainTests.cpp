@@ -4,6 +4,8 @@
 #include "TestHelpers.h"
 #include "core/presets/PresetManager.h"
 
+#include <juce_dsp/juce_dsp.h>
+
 #include <chrono>
 
 namespace stagemic::test
@@ -19,7 +21,22 @@ public:
 
     void runTest() override
     {
+        beginTest("Module table is complete and in order");
+        {
+            const auto& table = moduleDescriptors();
+            for (int i = 0; i < kNumModules; ++i)
+            {
+                expect((int)table[(size_t)i].id == i, "entry " + juce::String(i) + " is in the right slot");
+                expect(table[(size_t)i].key != nullptr && table[(size_t)i].enableParam != nullptr,
+                       "entry " + juce::String(i) + " is filled in");
+            }
+        }
+
         testEffectsDoTheirJob();
+        testSoundQualityRound();
+        testReverb();
+        testColor();
+        testDeEsserAndOrder();
         testSafety();
         testZeroLatency();
         testModuleOrder();
@@ -55,23 +72,31 @@ private:
             expectWithinAbsoluteError(rmsDb(tone, 24000, 24000) - juce::Decibels::gainToDecibels(0.1f * 0.70710678f), 6.0f, 0.5f);
         }
 
-        beginTest("Gate: turns quiet noise down by its range, leaves singing alone");
+        beginTest("Gate: expander turns noise down gently; hard gate by its full range; singing untouched");
         {
             auto p = makeProcessor();
             onlyModule(*p, ModuleId::Gate);
             setParam(*p, pid::gateThreshold, -50.0f);
             setParam(*p, pid::gateRange, 30.0f);
+            setParam(*p, pid::gateRatio, 2.0f);
 
+            // 2:1 expander: 20 dB under the threshold -> turned down a further 20 dB.
             auto hiss = sine(500.0, dsp::dbToGain(-70.0f), 96000);
             processSignal(*p, hiss);
-            expectWithinAbsoluteError(rmsDb(hiss, 72000, 24000) - (-70.0f - 3.01f), -30.0f, 1.0f);
+            expectWithinAbsoluteError(rmsDb(hiss, 72000, 24000) - (-70.0f - 3.01f), -20.0f, 1.0f);
+
+            // 10:1 behaves as a hard gate: down by the full range.
+            setParam(*p, pid::gateRatio, 10.0f);
+            auto hiss2 = sine(500.0, dsp::dbToGain(-70.0f), 96000);
+            processSignal(*p, hiss2);
+            expectWithinAbsoluteError(rmsDb(hiss2, 72000, 24000) - (-70.0f - 3.01f), -30.0f, 1.0f);
 
             auto voice = sine(500.0, dsp::dbToGain(-20.0f), 48000);
             processSignal(*p, voice);
             expectWithinAbsoluteError(rmsDb(voice, 24000, 24000) - (-20.0f - 3.01f), 0.0f, 0.2f);
         }
 
-        beginTest("Compressor: steady level follows threshold + (input - threshold) / ratio");
+        beginTest("Compressor: steady level follows threshold + (input - threshold) / ratio (RMS detection)");
         {
             auto p = makeProcessor();
             onlyModule(*p, ModuleId::Compressor);
@@ -79,11 +104,18 @@ private:
             setParam(*p, pid::compRatio, 4.0f);
             setParam(*p, pid::compMakeup, 0.0f);
 
-            // Peak -6 dBFS: 18 dB over the threshold -> 4.5 dB over after 4:1 -> 13.5 dB of reduction.
+            // Peak -6 dBFS sine = -9 dB RMS: 15 dB over the threshold -> 3.75 dB over after 4:1
+            // -> 11.25 dB of reduction -> output peak about -17.3 dBFS.
             auto loud = sine(300.0, dsp::dbToGain(-6.0f), 96000);
             processSignal(*p, loud);
             const float peakOut = juce::Decibels::gainToDecibels(loud.getMagnitude(0, 72000, 24000));
-            expectWithinAbsoluteError(peakOut, -19.5f, 1.5f);
+            expectWithinAbsoluteError(peakOut, -17.3f, 1.0f);
+
+            // Mix 0% = fully parallel: the uncompressed voice comes straight through.
+            setParam(*p, pid::compMix, 0.0f);
+            auto dryThrough = sine(300.0, dsp::dbToGain(-6.0f), 48000);
+            processSignal(*p, dryThrough);
+            expectWithinAbsoluteError(juce::Decibels::gainToDecibels(dryThrough.getMagnitude(0, 24000, 24000)), -6.0f, 0.3f);
             expectGreaterThan(p->getChain().getCompressorGainReductionDb(), 10.0f);
         }
 
@@ -93,6 +125,8 @@ private:
             onlyModule(*p, ModuleId::DeEsser);
             setParam(*p, pid::dsThreshold, -30.0f);
             setParam(*p, pid::dsRange, 12.0f);
+            setParam(*p, pid::dsFreq, 8000.0f);
+            p->getChain().requestSnap();
 
             auto ess = sine(8000.0, dsp::dbToGain(-6.0f), 48000);
             processSignal(*p, ess);
@@ -149,6 +183,497 @@ private:
     }
 
     //==========================================================================
+    void testSoundQualityRound()
+    {
+        beginTest("Auto Level: raises quiet talking toward the target, holds still in silence");
+        {
+            auto p = makeProcessor();
+            onlyModule(*p, ModuleId::Leveler);
+            setParam(*p, pid::levTarget, -18.0f);
+            setParam(*p, pid::levRange, 9.0f);
+            setParam(*p, pid::levSpeed, 500.0f);
+
+            // Quiet voice at -30 dB RMS: wants +12, limited to the 9 dB range.
+            auto quiet = sine(250.0, dsp::dbToGain(-27.0f), 48000 * 4);
+            processSignal(*p, quiet);
+            expectWithinAbsoluteError(rmsDb(quiet, 48000 * 3, 48000) - (-30.0f), 9.0f, 0.5f);
+
+            // Then silence-level noise: no extra boost is added during the pause.
+            const float gainBefore = p->getChain().getActivity().levelerGainDb;
+            auto pause = sine(250.0, dsp::dbToGain(-65.0f), 48000 * 2);
+            processSignal(*p, pause);
+            expectWithinAbsoluteError(p->getChain().getActivity().levelerGainDb, gainBefore, 0.5f);
+        }
+
+        beginTest("Parallel effects: the dry voice stays untouched; effects are added on top");
+        for (auto id : {ModuleId::Chorus, ModuleId::Delay, ModuleId::Reverb})
+        {
+            auto p = makeProcessor();
+            onlyModule(*p, id);
+            juce::AudioBuffer<float> impulse(2, 480);
+            impulse.clear();
+            impulse.setSample(0, 0, 0.5f);
+            impulse.setSample(1, 0, 0.5f);
+            juce::MidiBuffer midi;
+            p->processBlock(impulse, midi);
+            expectWithinAbsoluteError(impulse.getSample(0, 0), 0.5f, 1.0e-6f,
+                                      juce::String(describe(id).displayName) + " must not change the dry voice");
+        }
+
+        beginTest("Ducking: echoes are much quieter while singing, and come back in the gaps");
+        {
+            // Render the same phrase (0.5 s singing, then 1 s silence) with and without ducking,
+            // and compare only the echo (output minus dry voice).
+            auto render = [&](float duckDb) {
+                auto p = makeProcessor();
+                onlyModule(*p, ModuleId::Delay);
+                setParam(*p, pid::dlyTime, 200.0f);
+                setParam(*p, pid::dlyFeedback, 50.0f);
+                setParam(*p, pid::dlyMix, 100.0f);
+                setParam(*p, pid::dlyDuck, duckDb);
+                p->getChain().requestSnap();
+                auto signal = sine(440.0, 0.5f, 72000);
+                for (int c = 0; c < 2; ++c)
+                    juce::FloatVectorOperations::clear(signal.getWritePointer(c, 24000), 48000);
+                auto dry = signal;
+                processSignal(*p, signal);
+                for (int c = 0; c < 2; ++c)
+                    juce::FloatVectorOperations::subtract(signal.getWritePointer(c), dry.getReadPointer(c), signal.getNumSamples());
+                return signal; // echo only
+            };
+
+            const auto plain = render(0.0f);
+            const auto ducked = render(18.0f);
+            const float duringSinging = rmsDb(ducked, 12000, 9600) - rmsDb(plain, 12000, 9600);
+            const float laterInGap = rmsDb(ducked, 24000 + 19200, 14400) - rmsDb(plain, 24000 + 19200, 14400);
+            logMessage("Ducking: echo " + juce::String(duringSinging, 1) + " dB while singing, "
+                       + juce::String(laterInGap, 1) + " dB 0.4-0.7 s after the phrase");
+            expectLessThan(duringSinging, -12.0f, "echo ducked under the voice");
+            expectGreaterThan(laterInGap, -6.0f, "echo blooms back in the gap");
+        }
+
+        beginTest("Low cut: 24 dB/oct removes more rumble than 12 dB/oct");
+        {
+            float result[2];
+            for (int slope = 0; slope < 2; ++slope)
+            {
+                auto p = makeProcessor();
+                onlyModule(*p, ModuleId::Equalizer);
+                setParam(*p, pid::eqHighGain, 0.0f);
+                setParam(*p, pid::eqLowCut, 120.0f);
+                setParam(*p, pid::eqLowCutSlope, (float)slope);
+                p->getChain().requestSnap();
+                auto rumble = sine(40.0, 0.25f, 48000);
+                processSignal(*p, rumble);
+                result[slope] = rmsDb(rumble, 24000, 24000);
+            }
+            expectLessThan(result[1], result[0] - 10.0f);
+        }
+
+        beginTest("Older presets: a newly added module lands in a sensible place");
+        {
+            const auto merged = dsp::VocalChain::orderFromString(
+                "gate,eq,deesser,compressor,multiband,saturation,chorus,delay,reverb,limiter");
+            expect(merged.has_value());
+            expect((*merged)[1] == ModuleId::Tune, "Tune goes right after the Gate");
+            expect((*merged)[3] == ModuleId::Leveler, "Auto Level goes right after EQ");
+            expect((*merged)[(size_t)kNumModules - 1] == ModuleId::Limiter, "the limiter stays last");
+        }
+    }
+
+    void testReverb()
+    {
+        // Reverb-only processor: wide filters, no pre-delay, no ducking, full level.
+        auto makeReverb = [&](float sizePercent, float dampingPercent) {
+            auto p = makeProcessor();
+            onlyModule(*p, ModuleId::Reverb);
+            setParam(*p, pid::revSize, sizePercent);
+            setParam(*p, pid::revDamping, dampingPercent);
+            setParam(*p, pid::revMix, 100.0f);
+            setParam(*p, pid::revDuck, 0.0f);
+            setParam(*p, pid::revPreDelay, 0.0f);
+            setParam(*p, pid::revLowCut, 50.0f);
+            setParam(*p, pid::revHighCut, 16000.0f);
+            p->getChain().requestSnap();
+            return p;
+        };
+
+        beginTest("Reverb: decay time follows the Size setting");
+        for (float size : {30.0f, 55.0f, 80.0f})
+        {
+            auto p = makeReverb(size, 20.0f);
+            const int length = 48000 * 8;
+            juce::AudioBuffer<float> b(2, length);
+            b.clear();
+            b.setSample(0, 0, 0.5f);
+            b.setSample(1, 0, 0.5f);
+            processSignal(*p, b);
+            b.setSample(0, 0, 0.0f); // remove the dry impulse, keep only the tail
+            b.setSample(1, 0, 0.0f);
+
+            // Schroeder backward integration -> T30 (time from -5 to -35 dB), times 2 = RT60.
+            std::vector<double> energy((size_t)length);
+            double acc = 0.0;
+            for (int i = length; --i >= 0;)
+            {
+                const double v = b.getSample(0, i);
+                acc += v * v;
+                energy[(size_t)i] = acc;
+            }
+            int t5 = -1, t35 = -1;
+            for (int i = 0; i < length; ++i)
+            {
+                const double db = 10.0 * std::log10(energy[(size_t)i] / energy[0] + 1.0e-30);
+                if (t5 < 0 && db <= -5.0) t5 = i;
+                if (t35 < 0 && db <= -35.0) { t35 = i; break; }
+            }
+            const float measured = 2.0f * (float)(t35 - t5) / 48000.0f;
+            const float expected = 0.3f * std::pow(4.0f / 0.3f, size * 0.01f);
+            logMessage("Reverb size " + juce::String(size) + "%: RT60 " + juce::String(measured, 2) + " s (target "
+                       + juce::String(expected, 2) + " s)");
+            expectWithinAbsoluteError(measured, expected, expected * 0.3f, "RT60 at size " + juce::String(size));
+        }
+
+        beginTest("Reverb: never runs away, even at maximum size and no damping");
+        {
+            auto p = makeReverb(100.0f, 0.0f);
+            juce::Random rng(3);
+            juce::AudioBuffer<float> b(2, 48000 * 16);
+            b.clear();
+            for (int i = 0; i < 48000 * 4; ++i)
+                b.setSample(0, i, rng.nextFloat() - 0.5f), b.setSample(1, i, b.getSample(0, i));
+            processSignal(*p, b);
+            expect(allFinite(b));
+            expectLessThan(juce::Decibels::gainToDecibels(b.getMagnitude(0, 48000 * 15, 48000)), -80.0f,
+                           "tail has died away 12 s after the input stopped");
+        }
+
+        beginTest("Reverb: about as loud as the previous reverb, so presets keep their balance");
+        {
+            juce::Random rng(5);
+            juce::AudioBuffer<float> noise(2, 48000 * 3);
+            for (int i = 0; i < noise.getNumSamples(); ++i)
+                noise.setSample(0, i, 0.3f * (rng.nextFloat() - 0.5f)), noise.setSample(1, i, noise.getSample(0, i));
+
+            auto ours = noise;
+            auto p = makeReverb(55.0f, 45.0f);
+            processSignal(*p, ours);
+            for (int c = 0; c < 2; ++c) // keep only the reverb
+                juce::FloatVectorOperations::subtract(ours.getWritePointer(c), noise.getReadPointer(c), ours.getNumSamples());
+
+            auto classic = noise;
+            juce::Reverb reference;
+            reference.setSampleRate(48000.0);
+            juce::Reverb::Parameters rp;
+            rp.roomSize = 0.55f;
+            rp.damping = 0.45f;
+            rp.width = 1.0f;
+            rp.wetLevel = 1.0f / 3.0f;
+            rp.dryLevel = 0.0f;
+            reference.setParameters(rp);
+            reference.processStereo(classic.getWritePointer(0), classic.getWritePointer(1), classic.getNumSamples());
+
+            const float difference = rmsDb(ours, 48000, 96000) - rmsDb(classic, 48000, 96000);
+            logMessage("Reverb level vs previous reverb: " + juce::String(difference, 1) + " dB");
+            expectWithinAbsoluteError(difference, 0.0f, 4.0f);
+        }
+    }
+
+    /** Magnitude spectrum (power per bin) of channel 0 over the last 2^15 samples. */
+    static std::vector<double> powerSpectrum(const juce::AudioBuffer<float>& b)
+    {
+        constexpr int order = 15, size = 1 << order;
+        juce::dsp::FFT fft(order);
+        juce::dsp::WindowingFunction<float> window((size_t)size, juce::dsp::WindowingFunction<float>::blackmanHarris);
+        std::vector<float> data((size_t)size * 2, 0.0f);
+        const int start = b.getNumSamples() - size;
+        for (int i = 0; i < size; ++i)
+            data[(size_t)i] = b.getSample(0, start + i);
+        window.multiplyWithWindowingTable(data.data(), (size_t)size);
+        fft.performFrequencyOnlyForwardTransform(data.data());
+        std::vector<double> power((size_t)size / 2);
+        for (int i = 0; i < size / 2; ++i)
+            power[(size_t)i] = (double)data[(size_t)i] * data[(size_t)i];
+        return power;
+    }
+
+    /** Energy that is NOT at a harmonic of f0 (aliasing + noise), relative to the fundamental, in dB. */
+    static float aliasingDb(const std::vector<double>& power, double f0, double sampleRate)
+    {
+        const double binHz = sampleRate / (double)(power.size() * 2);
+        double fundamental = 0.0, other = 0.0;
+        for (size_t i = 1; i < power.size(); ++i)
+        {
+            const double f = (double)i * binHz;
+            if (f < 50.0 || f > 20000.0)
+                continue;
+            const double harmonic = std::round(f / f0);
+            const bool nearHarmonic = harmonic >= 1.0 && std::abs(f - harmonic * f0) < 8.0 * binHz;
+            if (nearHarmonic && harmonic == 1.0)
+                fundamental += power[i];
+            else if (!nearHarmonic)
+                other += power[i];
+        }
+        return (float)(10.0 * std::log10((other + 1.0e-30) / (fundamental + 1.0e-30)));
+    }
+
+    static float harmonicDb(const std::vector<double>& power, double f, double sampleRate)
+    {
+        const double binHz = sampleRate / (double)(power.size() * 2);
+        const int centre = (int)std::lround(f / binHz);
+        double e = 0.0;
+        for (int i = centre - 6; i <= centre + 6; ++i)
+            e += power[(size_t)juce::jlimit(0, (int)power.size() - 1, i)];
+        return (float)(10.0 * std::log10(e + 1.0e-30));
+    }
+
+    void testColor()
+    {
+        auto makeSaturation = [&](int model, float driveDb, float character) {
+            auto p = makeProcessor();
+            onlyModule(*p, ModuleId::Saturation);
+            setParam(*p, pid::satModel, (float)model);
+            setParam(*p, pid::satDrive, driveDb);
+            setParam(*p, pid::satMix, 100.0f);
+            setParam(*p, pid::satCharacter, character);
+            p->getChain().requestSnap();
+            return p;
+        };
+
+        beginTest("Saturation: oversampling keeps aliasing far below a plain saturator");
+        {
+            const double f0 = 6997.0; // high, bright note: the hard case for aliasing
+            auto p = makeSaturation(0, 18.0f, 35.0f);
+            auto ours = sine(f0, 0.5f, 65536);
+            processSignal(*p, ours);
+
+            // Reference: the same curve with no oversampling at all.
+            auto plain = sine(f0, 0.5f, 65536);
+            const float k = dsp::dbToGain(18.0f), b = 0.15f + 1.5f * (0.05f + 35.0f * 0.0035f), tb = std::tanh(b);
+            for (int i = 0; i < plain.getNumSamples(); ++i)
+                plain.setSample(0, i, std::tanh(plain.getSample(0, i) * k + b) - tb);
+
+            const float oursDb = aliasingDb(powerSpectrum(ours), f0, sr);
+            const float plainDb = aliasingDb(powerSpectrum(plain), f0, sr);
+            logMessage("Aliasing at 7 kHz, +18 dB drive: StageMic " + juce::String(oursDb, 1) + " dB, plain saturator "
+                       + juce::String(plainDb, 1) + " dB (relative to the note)");
+            expectLessThan(oursDb, plainDb - 15.0f, "at least 15 dB less aliasing than a plain saturator");
+            expectLessThan(oursDb, -50.0f);
+        }
+
+        beginTest("Saturation models have their own harmonic character");
+        {
+            float h2[3], h3[3], thd[3];
+            for (int model = 0; model < 3; ++model)
+            {
+                auto p = makeSaturation(model, 12.0f, model == 0 ? 50.0f : 0.0f);
+                auto tone = sine(1000.0, 0.3f, 65536);
+                processSignal(*p, tone);
+                const auto power = powerSpectrum(tone);
+                const float f1 = harmonicDb(power, 1000.0, sr);
+                h2[model] = harmonicDb(power, 2000.0, sr) - f1;
+                h3[model] = harmonicDb(power, 3000.0, sr) - f1;
+                thd[model] = juce::jmax(h2[model], h3[model]);
+                logMessage(juce::String(model == 0 ? "Tube" : (model == 1 ? "Tape" : "Console")) + ": 2nd harmonic "
+                           + juce::String(h2[model], 1) + " dB, 3rd " + juce::String(h3[model], 1) + " dB");
+            }
+            expectGreaterThan(h2[0], h3[0], "Tube: even (2nd) harmonic dominates - warm");
+            expectGreaterThan(h3[1], h2[1], "Tape: odd (3rd) harmonic dominates - soft and round");
+            expectLessThan(thd[2], thd[0], "Console is the subtlest model");
+        }
+
+        beginTest("Saturation adds almost no delay (oversampling filters are minimum-phase)");
+        {
+            auto p = makeSaturation(0, 0.0f, 0.0f);
+            juce::AudioBuffer<float> impulse(2, 480);
+            impulse.clear();
+            impulse.setSample(0, 0, 0.01f); // small: the curve is almost linear here
+            impulse.setSample(1, 0, 0.01f);
+            juce::MidiBuffer midi;
+            p->processBlock(impulse, midi);
+            int peak = 0;
+            for (int i = 1; i < 480; ++i)
+                if (std::abs(impulse.getSample(0, i)) > std::abs(impulse.getSample(0, peak)))
+                    peak = i;
+            logMessage("Saturation (100% wet) impulse peak at sample " + juce::String(peak) + " = "
+                       + juce::String(peak / 48.0, 3) + " ms");
+            expectLessOrEqual(peak, 5, "under about 0.1 ms");
+        }
+
+        beginTest("Exciter: adds harmonics above its frequency, leaves the body of the voice alone");
+        {
+            auto make = [&] {
+                auto p = makeProcessor();
+                onlyModule(*p, ModuleId::Exciter);
+                setParam(*p, pid::exFreq, 2500.0f);
+                setParam(*p, pid::exAmount, 70.0f);
+                setParam(*p, pid::exMix, 50.0f);
+                p->getChain().requestSnap();
+                return p;
+            };
+
+            auto p = make();
+            auto bright = sine(3000.0, 0.3f, 65536);
+            const auto before = powerSpectrum(bright);
+            processSignal(*p, bright);
+            const auto after = powerSpectrum(bright);
+            const float added = harmonicDb(after, 6000.0, sr) - harmonicDb(before, 6000.0, sr);
+            logMessage("Exciter: energy at 6 kHz (2nd harmonic of 3 kHz) rose by " + juce::String(added, 1) + " dB");
+            expectGreaterThan(added, 30.0f, "new upper harmonics appear");
+
+            auto q = make();
+            auto body = sine(300.0, 0.3f, 48000);
+            processSignal(*q, body);
+            expectWithinAbsoluteError(rmsDb(body, 24000, 24000) - juce::Decibels::gainToDecibels(0.3f * 0.70710678f), 0.0f, 0.3f,
+                                      "a 300 Hz voice body passes unchanged");
+        }
+    }
+
+    void testDeEsserAndOrder()
+    {
+        // A voice-like test signal: 300 Hz body, a 12 kHz "air" tone, and loud 7 kHz "s" bursts.
+        auto voiceWithEss = [] {
+            juce::AudioBuffer<float> b(2, 65536 * 2);
+            for (int i = 0; i < b.getNumSamples(); ++i)
+            {
+                const double t = i / 48000.0;
+                const bool essOn = (i / 4800) % 2 == 1; // 100 ms on / 100 ms off
+                const float v = 0.15f * (float)std::sin(2.0 * dsp::kPi * 300.0 * t) + 0.03f * (float)std::sin(2.0 * dsp::kPi * 12000.0 * t)
+                              + (essOn ? 0.3f * (float)std::sin(2.0 * dsp::kPi * 7000.0 * t) : 0.0f);
+                b.setSample(0, i, v);
+                b.setSample(1, i, v);
+            }
+            return b;
+        };
+        auto deEsser = [&](int mode, bool autoFreq) {
+            auto p = makeProcessor();
+            onlyModule(*p, ModuleId::DeEsser);
+            setParam(*p, pid::dsMode, (float)mode);
+            setParam(*p, pid::dsAuto, autoFreq ? 1.0f : 0.0f);
+            setParam(*p, pid::dsFreq, 7000.0f);
+            setParam(*p, pid::dsThreshold, -35.0f);
+            setParam(*p, pid::dsRange, 12.0f);
+            p->getChain().requestSnap();
+            return p;
+        };
+
+        beginTest("De-esser Band mode cuts the s, keeps the sparkle; Split mode dulls it");
+        {
+            const auto original = voiceWithEss();
+            const auto inPower = powerSpectrum(original);
+            float essCut[2], airChange[2];
+            for (int mode = 0; mode < 2; ++mode)
+            {
+                auto out = original;
+                auto p = deEsser(mode, false);
+                processSignal(*p, out);
+                const auto outPower = powerSpectrum(out);
+                essCut[mode] = harmonicDb(outPower, 7000.0, sr) - harmonicDb(inPower, 7000.0, sr);
+                airChange[mode] = harmonicDb(outPower, 12000.0, sr) - harmonicDb(inPower, 12000.0, sr);
+                logMessage(juce::String(mode == 0 ? "Band" : "Split") + " mode: s (7 kHz) " + juce::String(essCut[mode], 1)
+                           + " dB, air (12 kHz) " + juce::String(airChange[mode], 1) + " dB");
+            }
+            expectLessThan(essCut[0], -4.0f, "Band mode reduces the s");
+            expectGreaterThan(airChange[0], -1.0f, "Band mode leaves the 12 kHz sparkle alone");
+            expectLessThan(airChange[1], airChange[0] - 1.0f, "Split mode turns the sparkle down too");
+        }
+
+        beginTest("De-esser Auto finds the sibilant frequency");
+        {
+            auto p = deEsser(0, true);
+            setParam(*p, pid::dsFreq, 4500.0f); // start far away; Auto should move off it
+            auto b = voiceWithEss();
+            for (int c = 0; c < 2; ++c) // move the s to about 7.8 kHz
+                for (int i = 0; i < b.getNumSamples(); ++i)
+                {
+                    const bool essOn = (i / 4800) % 2 == 1;
+                    const double t = i / 48000.0;
+                    b.setSample(c, i, 0.15f * (float)std::sin(2.0 * dsp::kPi * 300.0 * t)
+                                          + (essOn ? 0.3f * (float)std::sin(2.0 * dsp::kPi * 7800.0 * t) : 0.0f));
+                }
+            processSignal(*p, b);
+            const float found = p->getChain().getActivity().deEsserFrequency;
+            logMessage("De-esser Auto settled at " + juce::String(found / 1000.0f, 2) + " kHz (s at 7.8 kHz)");
+            expectWithinAbsoluteError(found, 7800.0f, 800.0f);
+        }
+
+        beginTest("De-esser Listen plays only what it listens to");
+        {
+            auto p = deEsser(0, false);
+            p->getChain().setDeEsserListen(true);
+            auto body = sine(300.0, 0.3f, 48000);
+            processSignal(*p, body);
+            expectLessThan(rmsDb(body, 24000, 24000) - juce::Decibels::gainToDecibels(0.3f * 0.70710678f), -20.0f,
+                           "the body of the voice is not in the Listen signal");
+            p->getChain().setDeEsserListen(false);
+        }
+
+        beginTest("Recommended order: De-Ess after Compressor, Warmth and Air; Limiter last");
+        {
+            const auto order = dsp::VocalChain::defaultOrder();
+            auto indexOf = [&](ModuleId id) { return (int)(std::find(order.begin(), order.end(), id) - order.begin()); };
+            expect(indexOf(ModuleId::DeEsser) > indexOf(ModuleId::Compressor));
+            expect(indexOf(ModuleId::DeEsser) > indexOf(ModuleId::Exciter));
+            expect(indexOf(ModuleId::DeEsser) > indexOf(ModuleId::Saturation));
+            expect(order.back() == ModuleId::Limiter);
+            expect(dsp::VocalChain::isValidOrder(order));
+        }
+
+        beginTest("Re-ordering while audio plays doesn't click");
+        {
+            auto p = makeProcessor();
+            onlyModule(*p, ModuleId::Equalizer);
+            setParam(*p, pid::revOn, 1.0f);
+            setParam(*p, pid::eqHighGain, 6.0f);
+            p->getChain().requestSnap();
+            auto signal = sine(220.0, 0.5f, 48000);
+            juce::MidiBuffer midi;
+            float worstJump = 0.0f, previous = 0.0f;
+            for (int start = 0; start < signal.getNumSamples(); start += 480)
+            {
+                if (start == 24000) // swap EQ and Reverb mid-signal
+                {
+                    auto order = dsp::VocalChain::defaultOrder();
+                    std::iter_swap(std::find(order.begin(), order.end(), ModuleId::Equalizer),
+                                   std::find(order.begin(), order.end(), ModuleId::Reverb));
+                    p->getChain().setOrder(order);
+                }
+                juce::AudioBuffer<float> view(signal.getArrayOfWritePointers(), 2, start, 480);
+                p->processBlock(view, midi);
+                for (int i = 0; i < 480; ++i)
+                {
+                    const float v = view.getSample(0, i);
+                    if (start > 0 || i > 0)
+                        worstJump = juce::jmax(worstJump, std::abs(v - previous));
+                    previous = v;
+                }
+            }
+            // A 220 Hz sine at 0.5 changes by at most ~0.015 per sample; a click would jump far more.
+            expectLessThan(worstJump, 0.06f);
+        }
+
+        beginTest("Saved v0.2.0 setups move to the new order; deliberate orders are kept");
+        {
+            auto stateWithOrder = [](const juce::String& order) {
+                juce::XmlElement xml(StageMicProcessor::stateTag);
+                xml.setAttribute("version", 2);
+                xml.setAttribute("order", order);
+                juce::MemoryBlock block;
+                juce::AudioProcessor::copyXmlToBinary(xml, block);
+                return block;
+            };
+
+            auto p = makeProcessor();
+            auto legacy = stateWithOrder(dsp::VocalChain::legacyDefaultOrderString());
+            p->setStateInformation(legacy.getData(), (int)legacy.getSize());
+            expect(p->getChain().getOrder() == dsp::VocalChain::defaultOrder(), "old default -> new recommended order");
+
+            auto custom = stateWithOrder("reverb,gate,eq,deesser,compressor,multiband,saturation,chorus,delay,limiter");
+            p->setStateInformation(custom.getData(), (int)custom.getSize());
+            expect(p->getChain().getOrder()[0] == ModuleId::Reverb, "a deliberately chosen order is kept");
+        }
+    }
+
     void testSafety()
     {
         beginTest("Every module on: the audio path never allocates memory");
@@ -232,9 +757,11 @@ private:
     //==========================================================================
     void testZeroLatency()
     {
-        beginTest("Zero latency: every module responds on the very first sample");
+        beginTest("Zero latency: every module responds on the very first sample (Tune excepted: it's tested on its own)");
         for (const auto& d : moduleDescriptors())
         {
+            if (d.id == ModuleId::Tune)
+                continue;
             auto p = makeProcessor();
             onlyModule(*p, d.id);
             setParam(*p, pid::gateThreshold, -80.0f);   // gate open
@@ -403,6 +930,247 @@ private:
     //==========================================================================
     void testCpu()
     {
+        beginTest("Warmth: no sub-bass thump following the syllables (found on a real voice)");
+        {
+            // Syllables: a 220 Hz voice pulsing on and off 4 times a second.
+            auto run = [&](bool satOn, int model) {
+                auto p = makeProcessor();
+                allModulesOff(*p);
+                setParam(*p, pid::satOn, satOn ? 1.0f : 0.0f);
+                setParam(*p, pid::satModel, (float)model);
+                setParam(*p, pid::satDrive, 14.0f);
+                setParam(*p, pid::satMix, 70.0f);
+                setParam(*p, pid::satCharacter, 60.0f);
+                p->getChain().requestSnap();
+                juce::AudioBuffer<float> b(2, (int)sr * 2);
+                for (int i = 0; i < b.getNumSamples(); ++i)
+                {
+                    const double t = i / sr;
+                    const double env = std::pow(std::sin(juce::MathConstants<double>::pi * 4.0 * t), 2.0);
+                    double v = 0.0;
+                    for (int h = 1; h <= 12; ++h)
+                        v += std::sin(2.0 * juce::MathConstants<double>::pi * 220.0 * h * t) / h;
+                    b.setSample(0, i, (float)(0.3 * env * v));
+                    b.setSample(1, i, (float)(0.3 * env * v));
+                }
+                processSignal(*p, b);
+                dsp::Biquad lp1, lp2;
+                lp1.c = dsp::biquad::lowpass(sr, 40.0, 0.54);
+                lp2.c = dsp::biquad::lowpass(sr, 40.0, 1.31);
+                double low = 0.0, all = 0.0;
+                for (int i = (int)sr / 2; i < b.getNumSamples(); ++i)
+                {
+                    const float x = b.getSample(0, i), y = lp2.process(lp1.process(x, 0), 0);
+                    low += (double)y * y;
+                    all += (double)x * x;
+                }
+                return 10.0 * std::log10(low / all + 1e-20);
+            };
+            const double clean = run(false, 0);
+            for (int model = 0; model < 3; ++model)
+            {
+                const double sat = run(true, model);
+                logMessage("below 40 Hz: no Warmth " + juce::String(clean, 1) + " dB, model " + juce::String(model) + " "
+                           + juce::String(sat, 1) + " dB");
+                expectLessThan(sat, clean + 6.0, "no thump");
+            }
+        }
+
+        beginTest("Harshness tamer: dips 2-5 kHz only when a belted note gets harsh");
+        {
+            // A voice: 220 Hz with falling harmonics. "Belted" adds a strong 2.5-4 kHz shout.
+            auto voice = [&](bool harsh, float level) {
+                juce::AudioBuffer<float> b(2, (int)sr);
+                for (int i = 0; i < b.getNumSamples(); ++i)
+                {
+                    double v = 0.0;
+                    for (int h = 1; h <= 40; ++h)
+                    {
+                        const double f = 220.0 * h;
+                        double a = 1.0 / h;
+                        if (harsh && f > 2400.0 && f < 4200.0)
+                            a *= 6.0; // about +15 dB
+                        v += a * std::sin(2.0 * juce::MathConstants<double>::pi * f * i / sr);
+                    }
+                    b.setSample(0, i, level * (float)v);
+                    b.setSample(1, i, level * (float)v);
+                }
+                return b;
+            };
+            auto tameCut = [&](bool harsh, float level) {
+                auto p = makeProcessor();
+                onlyModule(*p, ModuleId::Equalizer);
+                setParam(*p, pid::eqHighGain, 0.0f);
+                setParam(*p, pid::eqLowCut, 20.0f);
+                setParam(*p, pid::eqTameRange, 6.0f);
+                p->getChain().requestSnap();
+                auto b = voice(harsh, level);
+                processSignal(*p, b);
+                return p->getChain().getActivity().tameReductionDb;
+            };
+            const float normalLoud = tameCut(false, 0.15f), normalQuiet = tameCut(false, 0.02f);
+            const float harshLoud = tameCut(true, 0.15f), harshQuiet = tameCut(true, 0.02f);
+            logMessage("tame cut: normal " + juce::String(normalLoud, 2) + " / " + juce::String(normalQuiet, 2) + " dB, belted "
+                       + juce::String(harshLoud, 2) + " / " + juce::String(harshQuiet, 2) + " dB (loud / quiet)");
+            expectLessThan(normalLoud, 1.0f, "a normal voice is left alone");
+            expectGreaterThan(harshLoud, 3.0f, "a harsh belt is tamed");
+            expectWithinAbsoluteError(harshQuiet, harshLoud, 1.0f, "works the same at any level");
+
+            // Max Cut 0 = off: bit-exact with the plain EQ.
+            auto a = makeProcessor(), b = makeProcessor();
+            onlyModule(*a, ModuleId::Equalizer);
+            onlyModule(*b, ModuleId::Equalizer);
+            setParam(*b, pid::eqTameThreshold, -30.0f);
+            auto x = voice(true, 0.15f), y = voice(true, 0.15f);
+            processSignal(*a, x);
+            processSignal(*b, y);
+            float diff = 0.0f;
+            for (int i = 0; i < x.getNumSamples(); ++i)
+                diff = std::max(diff, std::abs(x.getSample(0, i) - y.getSample(0, i)));
+            expectEquals(diff, 0.0f, "off means off");
+        }
+
+        beginTest("Plosive tamer: takes the thump out of \"p\" and \"b\", leaves sung low notes alone");
+        {
+            // A sung voice (f0 Hz, falling harmonics) with optional "p" thumps: a 60 Hz burst every 0.5 s.
+            auto voice = [&](double f0, bool pops) {
+                juce::AudioBuffer<float> b(2, (int)sr * 2);
+                for (int i = 0; i < b.getNumSamples(); ++i)
+                {
+                    const double t = i / sr;
+                    double v = 0.0;
+                    for (int h = 1; h <= 30; ++h)
+                        v += std::sin(2.0 * juce::MathConstants<double>::pi * f0 * h * t) / h;
+                    v *= 0.05;
+                    const double sincePop = std::fmod(t, 0.5);
+                    if (pops && t > 0.25)
+                        v += 0.6 * std::exp(-sincePop / 0.025) * std::sin(2.0 * juce::MathConstants<double>::pi * 60.0 * sincePop);
+                    b.setSample(0, i, (float)v);
+                    b.setSample(1, i, (float)v);
+                }
+                return b;
+            };
+            auto lowDb = [&](const juce::AudioBuffer<float>& b, double from, double to) {
+                // Level below 100 Hz from..to seconds after each pop.
+                dsp::Biquad lp;
+                lp.c = dsp::biquad::lowpass(sr, 100.0, 0.707);
+                double sum = 0.0;
+                int count = 0;
+                for (int i = 0; i < b.getNumSamples(); ++i)
+                {
+                    const float y = lp.process(b.getSample(0, i), 0);
+                    const double t = i / sr;
+                    if (t > 0.5 && std::fmod(t, 0.5) >= from && std::fmod(t, 0.5) < to)
+                    {
+                        sum += (double)y * y;
+                        ++count;
+                    }
+                }
+                return 10.0f * (float)std::log10(sum / juce::jmax(1, count) + 1.0e-20);
+            };
+            auto run = [&](double f0, bool pops, float amount) {
+                auto p = makeProcessor();
+                onlyModule(*p, ModuleId::Equalizer);
+                setParam(*p, pid::eqLowCut, 20.0f);
+                setParam(*p, pid::eqHighGain, 0.0f);
+                setParam(*p, pid::eqPlosive, amount);
+                p->getChain().requestSnap();
+                auto b = voice(f0, pops);
+                processSignal(*p, b);
+                return b;
+            };
+
+            const auto dry = run(220.0, true, 0.0f), tamed = run(220.0, true, 100.0f);
+            const float whole = lowDb(dry, 0.0, 0.08) - lowDb(tamed, 0.0, 0.08);
+            const float boom = lowDb(dry, 0.01, 0.08) - lowDb(tamed, 0.01, 0.08);
+            logMessage("thump below 100 Hz cut by " + juce::String(whole, 1) + " dB overall, boom after the first 10 ms by "
+                       + juce::String(boom, 1) + " dB (zero latency: the first few ms can't be caught)");
+            expectGreaterThan(whole, 5.0f, "the thump is cut");
+            expectGreaterThan(boom, 12.0f, "the boom is gone");
+
+            // Sung low notes (a male voice at 98 Hz and 130 Hz) don't trigger it.
+            for (double f0 : {98.0, 130.0, 220.0})
+            {
+                auto off = run(f0, false, 0.0f), on = run(f0, false, 100.0f);
+                // Level over every 4 whole cycles of the note, including its sudden start.
+                const int step = (int)std::lround(4.0 * sr / f0);
+                float worst = 0.0f;
+                for (int start = 0; start + step <= off.getNumSamples(); start += step)
+                    worst = std::max(worst, std::abs(rmsDb(on, start, step) - rmsDb(off, start, step)));
+                logMessage("sung " + juce::String(f0) + " Hz: biggest level change " + juce::String(worst, 3) + " dB");
+                expectLessThan(worst, 0.1f, "sung notes untouched");
+            }
+        }
+
+        beginTest("Set up my voice: measures room, level and \"s\" frequency, and survives preset changes");
+        {
+            auto p = makeProcessor();
+            const int n = (int)sr * 12;
+            juce::AudioBuffer<float> mic(2, n);
+            juce::Random rng(7);
+            dsp::Biquad sFilter;
+            sFilter.c = dsp::biquad::bandPass(sr, 7800.0, 4.0);
+            const int quietEnd = (int)(sr * 3.3); // a little slack after the 3 s quiet part
+            for (int i = 0; i < n; ++i)
+            {
+                const float noise = (rng.nextFloat() * 2.0f - 1.0f) * 0.0005f; // about -71 dBFS RMS
+                float x = noise;
+                if (i >= quietEnd)
+                {
+                    const double t = (double)i / sr;
+                    const bool sSound = std::fmod(t, 1.0) > 0.8; // 200 ms "s" every second
+                    if (sSound)
+                        x += sFilter.process((rng.nextFloat() * 2.0f - 1.0f) * 0.25f, 0);
+                    else
+                        x += 0.045f * (float)(std::sin(2.0 * juce::MathConstants<double>::pi * 220.0 * t)
+                                              + 0.5 * std::sin(2.0 * juce::MathConstants<double>::pi * 440.0 * t)); // about -27 dBFS
+                }
+                mic.setSample(0, i, x);
+                mic.setSample(1, i, x);
+            }
+
+            p->getVoiceAnalyzer().start();
+            processSignal(*p, mic);
+            expect(p->getVoiceAnalyzer().getPhase() == VoiceAnalyzer::Phase::Done, "measurement finished");
+
+            const auto r = VoiceAnalyzer::evaluate(p->getVoiceAnalyzer().getMeasurements());
+            logMessage("noise " + juce::String(r.noiseDb) + " dB, voice " + juce::String(r.voiceDb) + " dB, peak "
+                       + juce::String(r.peakDb) + " dB -> input " + juce::String(r.inputGainDb) + " dB, gate "
+                       + juce::String(r.gateThresholdDb) + " dB, s at " + juce::String(r.sibilantHz) + " Hz");
+            expect(r.heardVoice);
+            expectWithinAbsoluteError(r.noiseDb, -71.0f, 3.0f, "room noise");
+            expectWithinAbsoluteError(r.inputGainDb, 7.0f, 3.0f, "input gain brings the voice to about -20 dBFS");
+            expect(r.gateThresholdDb > r.noiseDb + r.inputGainDb + 5.0f, "gate above the room noise");
+            expect(r.gateThresholdDb < r.voiceDb + r.inputGainDb - 10.0f, "gate well below the voice");
+            expectEquals(r.sibilantHz, 7800.0f, "found the s frequency");
+            expect(!r.clipped && !r.noisy && !r.veryQuiet);
+
+            p->applyVoiceSetup(r);
+            expectWithinAbsoluteError(getParam(*p, pid::inGain), r.inputGainDb, 0.01f);
+            expectWithinAbsoluteError(getParam(*p, pid::dsFreq), 7800.0f, 1.0f);
+
+            auto voiceDir = juce::File::createTempFile("stagemic-voice");
+            PresetManager presets(*p, voiceDir);
+            presets.loadFactoryPreset("Radio Voice");
+            expectWithinAbsoluteError(getParam(*p, pid::inGain), r.inputGainDb, 0.01f, "mic settings stay across presets");
+            expectWithinAbsoluteError(getParam(*p, pid::gateThreshold), r.gateThresholdDb, 0.01f);
+            expectWithinAbsoluteError(getParam(*p, pid::eqLowCut), 280.0f, 0.5f, "the preset's sound still loads");
+
+            juce::MemoryBlock saved;
+            p->getStateInformation(saved);
+            auto q = makeProcessor();
+            q->setStateInformation(saved.getData(), (int)saved.getSize());
+            expect(q->hasVoiceSetup(), "voice setup is remembered by OBS");
+
+            // Silence only: it must say it heard nothing rather than crank the gain.
+            auto silent = makeProcessor();
+            juce::AudioBuffer<float> nothing(2, n);
+            nothing.clear();
+            silent->getVoiceAnalyzer().start();
+            processSignal(*silent, nothing);
+            expect(!VoiceAnalyzer::evaluate(silent->getVoiceAnalyzer().getMeasurements()).heardVoice, "no voice, no changes");
+        }
+
         beginTest("CPU: the whole chain is lightweight");
 
         auto p = makeProcessor();

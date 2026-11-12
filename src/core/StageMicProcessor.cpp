@@ -47,6 +47,7 @@ void StageMicProcessor::prepareToPlay(double sampleRate, int maximumExpectedSamp
     preparedBlockSize = maximumExpectedSamplesPerBlock;
 
     chain.prepare(sampleRate, juce::jmax(1, getTotalNumInputChannels()));
+    voiceAnalyzer.prepare(sampleRate);
 
     inGainSmooth.reset(sampleRate, 0.02);
     outGainSmooth.reset(sampleRate, 0.02);
@@ -109,6 +110,7 @@ void StageMicProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mid
         for (int c = 0; c < numChannels; ++c)
             ptrs[c] = buffer.getWritePointer(c, offset);
 
+        voiceAnalyzer.push(ptrs, numChannels, n); // raw mic, before Input Gain
         applyGain(inGainSmooth, ptrs, numChannels, n);
         inPeak = juce::jmax(inPeak, peakOf(ptrs, numChannels, n));
 
@@ -137,6 +139,7 @@ void StageMicProcessor::getStateInformation(juce::MemoryBlock& destData)
     state.setProperty("version", stateVersion, nullptr);
     state.setProperty("preset", currentPresetName, nullptr);
     state.setProperty("order", dsp::VocalChain::orderToString(chain.getOrder()), nullptr);
+    state.setProperty("voiceSetup", voiceSetupDone, nullptr);
     state.appendChild(parameters.copyState(), nullptr);
 
     if (auto xml = state.createXml())
@@ -154,8 +157,15 @@ void StageMicProcessor::setStateInformation(const void* data, int sizeInBytes)
 
     // Version 1 (Phase 1) had no sound settings: it simply loads as the defaults.
     const auto params = version >= 2 ? state.getChildWithName(paramsTag) : juce::ValueTree();
-    applySoundTree(params, state.getProperty("order").toString());
 
+    // Version 2 (v0.2.0) setups still on that version's *default* order move to the new
+    // recommended order; an order someone chose deliberately is kept as it is.
+    auto order = state.getProperty("order").toString();
+    if (version < 3 && order == dsp::VocalChain::legacyDefaultOrderString())
+        order = {};
+    applySoundTree(params, order);
+
+    voiceSetupDone = (bool)state.getProperty("voiceSetup", false);
     if (state.hasProperty("preset"))
         currentPresetName = state.getProperty("preset").toString();
 
@@ -192,14 +202,55 @@ bool StageMicProcessor::applyPresetXml(const juce::XmlElement& xml)
         return false;
 
     const auto preset = juce::ValueTree::fromXml(xml);
+    const auto mic = captureMicSettings();
     applySoundTree(preset.getChildWithName(paramsTag), preset.getProperty("order").toString());
+    restoreMicSettings(mic);
     currentPresetName = preset.getProperty("name", "Untitled").toString();
     return true;
 }
 
 void StageMicProcessor::resetToDefaults()
 {
+    const auto mic = captureMicSettings();
     applySoundTree({}, {});
+    restoreMicSettings(mic);
+}
+
+std::array<float, 3> StageMicProcessor::captureMicSettings()
+{
+    std::array<float, 3> values{};
+    for (size_t i = 0; i < values.size(); ++i)
+        values[i] = parameters.getRawParameterValue(micSettings[i])->load();
+    return values;
+}
+
+void StageMicProcessor::restoreMicSettings(const std::array<float, 3>& values)
+{
+    if (!voiceSetupDone)
+        return;
+    for (size_t i = 0; i < values.size(); ++i)
+        setParameterValue(micSettings[i], values[i]);
+}
+
+void StageMicProcessor::setParameterValue(const char* id, float value)
+{
+    if (auto* p = parameters.getParameter(id))
+    {
+        p->beginChangeGesture();
+        p->setValueNotifyingHost(p->convertTo0to1(value));
+        p->endChangeGesture();
+    }
+}
+
+void StageMicProcessor::applyVoiceSetup(const VoiceAnalyzer::Result& r)
+{
+    if (!r.heardVoice)
+        return;
+    setParameterValue(pid::inGain, r.inputGainDb);
+    setParameterValue(pid::gateThreshold, r.gateThresholdDb);
+    if (r.sibilantHz > 0.0f)
+        setParameterValue(pid::dsFreq, r.sibilantHz);
+    voiceSetupDone = true;
 }
 
 } // namespace stagemic

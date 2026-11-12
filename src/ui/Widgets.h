@@ -26,6 +26,7 @@ class SmallKnob final : public juce::Component
 public:
     SmallKnob(APVTS& state, const juce::String& paramId, const juce::String& name);
     void resized() override;
+    void setTooltip(const juce::String& text) { slider.setTooltip(text); }
 
 private:
     juce::Label label;
@@ -50,6 +51,23 @@ private:
     juce::Label label, valueText;
     juce::Slider slider;
     APVTS::SliderAttachment attachment;
+};
+
+/** Multiple-choice setting: name below, a button showing the current choice.
+    Each click moves to the next choice (e.g. Tube -> Tape -> Console -> Tube). */
+class ChoiceToggle final : public juce::Component
+{
+public:
+    ChoiceToggle(APVTS& state, const juce::String& paramId, const juce::String& name);
+    void resized() override;
+
+private:
+    void refresh();
+
+    juce::Label label;
+    juce::TextButton button;
+    juce::AudioParameterChoice* parameter;
+    juce::ParameterAttachment attachment;
 };
 
 /** Vertical fader with its name above and value below. */

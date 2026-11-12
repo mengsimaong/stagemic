@@ -72,6 +72,8 @@ set(
   src/core/dsp/Dynamics.h
   src/core/dsp/Tone.cpp
   src/core/dsp/Tone.h
+  src/core/dsp/Tune.cpp
+  src/core/dsp/Tune.h
   src/core/dsp/Effects.cpp
   src/core/dsp/Effects.h
   src/core/dsp/VocalChain.cpp
@@ -79,6 +81,9 @@ set(
   src/core/presets/PresetManager.cpp
   src/core/presets/PresetManager.h
   src/core/SpectrumTap.h
+  src/core/VoiceAnalyzer.h
+  src/ui/VoiceSetup.cpp
+  src/ui/VoiceSetup.h
   src/ui/Theme.h
   src/ui/Widgets.cpp
   src/ui/Widgets.h
@@ -90,6 +95,8 @@ set(
   src/ui/MasterPanel.h
   src/ui/PresetBar.cpp
   src/ui/PresetBar.h
+  src/ui/ChainBar.cpp
+  src/ui/ChainBar.h
   src/ui/StageMicEditor.cpp
   src/ui/StageMicEditor.h
   src/ui/EditorWindow.cpp

@@ -101,6 +101,14 @@ inline BiquadCoeffs highpass(double sampleRate, double freq, double q) noexcept
     return normalise((1.0 + c) * 0.5, -(1.0 + c), (1.0 + c) * 0.5, 1.0 + alpha, -2.0 * c, 1.0 - alpha);
 }
 
+// Band-pass with 0 dB gain at its centre (RBJ "constant 0 dB peak gain").
+inline BiquadCoeffs bandPass(double sampleRate, double freq, double q) noexcept
+{
+    const double w = 2.0 * kPi * clampFreq(freq, sampleRate) / sampleRate;
+    const double alpha = std::sin(w) / (2.0 * q);
+    return normalise(alpha, 0.0, -alpha, 1.0 + alpha, -2.0 * std::cos(w), 1.0 - alpha);
+}
+
 inline BiquadCoeffs peak(double sampleRate, double freq, double q, double gainDb) noexcept
 {
     const double A = std::pow(10.0, gainDb / 40.0);

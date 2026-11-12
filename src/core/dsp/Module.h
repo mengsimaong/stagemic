@@ -29,6 +29,11 @@ public:
 
     virtual void process(float* const* channels, int numChannels, int numSamples) noexcept = 0;
 
+    /** Send effects (Chorus, Delay, Reverb) run in parallel with the dry voice:
+        process() receives a copy of the voice and must replace it with the effect
+        signal only ("100% wet"). The chain mixes the result back in. */
+    virtual bool isSend() const noexcept { return false; }
+
 protected:
     static std::atomic<float>* param(juce::AudioProcessorValueTreeState& state, const char* id)
     {

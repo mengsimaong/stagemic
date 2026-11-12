@@ -18,12 +18,14 @@ inline float peakAcross(float* const* ch, int numChannels, int i) noexcept
 } // namespace
 
 //==============================================================================
-// Gate: opens above the threshold, closes 4 dB below it (hysteresis) after a
-// short hold, and turns the signal down by "range" dB while closed.
+// Gate / expander: below the threshold the voice is turned down gradually
+// (ratio 2:1 = gentle expander, 10:1 = hard gate), never by more than "range".
+// A 40 ms hold keeps word endings and sung note tails from being chopped.
 Gate::Gate(juce::AudioProcessorValueTreeState& s)
     : threshold(param(s, pid::gateThreshold))
     , range(param(s, pid::gateRange))
     , release(param(s, pid::gateRelease))
+    , ratio(param(s, pid::gateRatio))
 {
 }
 
@@ -40,42 +42,38 @@ void Gate::prepare(double sampleRate, int)
 void Gate::reset() noexcept
 {
     envelope = 0.0f;
-    gain = 1.0f;
-    open = true;
+    gainDb = 0.0f;
     holdCounter = holdSamples;
+    gainMeter.store(1.0f, std::memory_order_relaxed);
 }
 
 void Gate::update(bool) noexcept
 {
-    const float thrDb = load(threshold);
-    thresholdGain = dbToGain(thrDb);
-    closeGain = dbToGain(thrDb - 4.0f);
-    floorGain = dbToGain(-load(range));
+    thresholdDb = load(threshold);
+    rangeDb = load(range);
+    ratioValue = std::max(1.0f, load(ratio));
     closeCoef = timeToCoef(load(release), sr);
 }
 
 void Gate::process(float* const* ch, int numChannels, int n) noexcept
 {
+    float gain = dbToGain(gainDb);
     for (int i = 0; i < n; ++i)
     {
         const float peak = peakAcross(ch, numChannels, i);
         envelope = peak + (peak > envelope ? envAttack : envRelease) * (envelope - peak);
 
-        if (envelope > thresholdGain)
-        {
-            open = true;
+        const float below = gainToDb(envelope) - thresholdDb;
+        float targetDb = 0.0f;
+        if (below >= 0.0f)
             holdCounter = holdSamples;
-        }
-        else if (open && envelope < closeGain)
-        {
-            if (holdCounter > 0)
-                --holdCounter;
-            else
-                open = false;
-        }
+        else if (holdCounter > 0)
+            --holdCounter;
+        else
+            targetDb = std::max(-rangeDb, below * (ratioValue - 1.0f));
 
-        const float target = open ? 1.0f : floorGain;
-        gain = target + (target > gain ? openCoef : closeCoef) * (gain - target);
+        gainDb = targetDb + (targetDb > gainDb ? openCoef : closeCoef) * (gainDb - targetDb);
+        gain = dbToGain(gainDb);
 
         for (int c = 0; c < numChannels; ++c)
             ch[c][i] *= gain;
@@ -84,13 +82,80 @@ void Gate::process(float* const* ch, int numChannels, int n) noexcept
 }
 
 //==============================================================================
-// De-esser: splits the voice into low | high with a Linkwitz-Riley crossover
-// (the two halves add back up flat), and turns only the high "s" band down
-// while it is louder than the threshold.
-DeEsser::DeEsser(juce::AudioProcessorValueTreeState& s)
+// Auto Level: measures the voice's level over ~300 ms and slowly steers it
+// toward the target (by at most +/- range). It reacts 3x faster when the voice
+// gets louder than when it gets quieter, and freezes during pauses.
+Leveler::Leveler(juce::AudioProcessorValueTreeState& s)
+    : target(param(s, pid::levTarget))
+    , range(param(s, pid::levRange))
+    , speed(param(s, pid::levSpeed))
+{
+}
+
+void Leveler::prepare(double sampleRate, int)
+{
+    sr = sampleRate;
+    rmsCoef = timeToCoef(300.0f, sr);
+    update(true);
+    reset();
+}
+
+void Leveler::reset() noexcept
+{
+    meanSquare = 0.0f;
+    gainDb = 0.0f;
+    gainMeter.store(0.0f, std::memory_order_relaxed);
+}
+
+void Leveler::update(bool) noexcept
+{
+    targetDb = load(target);
+    rangeDb = load(range);
+    const float ms = load(speed);
+    upCoef = timeToCoef(ms, sr);
+    downCoef = timeToCoef(ms / 3.0f, sr);
+}
+
+void Leveler::process(float* const* ch, int numChannels, int n) noexcept
+{
+    constexpr float silenceDb = -50.0f; // below this it's a pause: hold the current gain
+    for (int i = 0; i < n; ++i)
+    {
+        float sq = 0.0f;
+        for (int c = 0; c < numChannels; ++c)
+            sq = std::max(sq, ch[c][i] * ch[c][i]);
+        meanSquare = sq + rmsCoef * (meanSquare - sq);
+
+        const float levelDb = 10.0f * std::log10(std::max(meanSquare, 1.0e-12f));
+        if (levelDb > silenceDb)
+        {
+            const float wanted = juce::jlimit(-rangeDb, rangeDb, targetDb - levelDb);
+            gainDb = wanted + (wanted < gainDb ? downCoef : upCoef) * (gainDb - wanted);
+        }
+
+        const float g = dbToGain(gainDb);
+        for (int c = 0; c < numChannels; ++c)
+            ch[c][i] *= g;
+    }
+    gainMeter.store(gainDb, std::memory_order_relaxed);
+}
+
+//==============================================================================
+// De-esser (see Dynamics.h for the modes).
+namespace
+{
+constexpr float candidateHz[] = {4500.0f, 5500.0f, 6600.0f, 7800.0f, 9200.0f, 10800.0f};
+
+using biquad::bandPass;
+} // namespace
+
+DeEsser::DeEsser(juce::AudioProcessorValueTreeState& s, const std::atomic<bool>& listenFlag)
     : freq(param(s, pid::dsFreq))
     , threshold(param(s, pid::dsThreshold))
     , range(param(s, pid::dsRange))
+    , mode(param(s, pid::dsMode))
+    , autoFreq(param(s, pid::dsAuto))
+    , listen(listenFlag)
 {
 }
 
@@ -99,72 +164,134 @@ void DeEsser::prepare(double sampleRate, int)
     sr = sampleRate;
     envAttack = timeToCoef(0.5f, sr);
     envRelease = timeToCoef(40.0f, sr);
+    voiceAttack = timeToCoef(5.0f, sr);
+    voiceRelease = timeToCoef(200.0f, sr);
+    candidateAttack = timeToCoef(3.0f, sr);
+    candidateRelease = timeToCoef(120.0f, sr);
     gr.setTimes(1.0f, 60.0f, sr);
+    for (int i = 0; i < kCandidates; ++i)
+        candidates[i].c = bandPass(sr, candidateHz[i], 2.5);
     freqSmooth.snap(load(freq));
-    splitter.setCutoff(sr, freqSmooth.current);
+    setFrequency(freqSmooth.current);
     reset();
+}
+
+void DeEsser::setFrequency(float hz) noexcept
+{
+    splitter.setCutoff(sr, hz);
+    band.c = bandPass(sr, hz, 1.4);
+    freqMeter.store(hz, std::memory_order_relaxed);
 }
 
 void DeEsser::reset() noexcept
 {
     splitter.reset();
+    band.reset();
+    for (auto& c : candidates)
+        c.reset();
+    std::fill(std::begin(candidateEnv), std::end(candidateEnv), 0.0f);
     envelope = 0.0f;
+    voiceEnvelope = 0.0f;
     gr.state = 0.0f;
     grMeter.store(0.0f, std::memory_order_relaxed);
 }
 
 void DeEsser::update(bool snap) noexcept
 {
-    if (freqSmooth.step(load(freq), snap) || snap)
-        splitter.setCutoff(sr, freqSmooth.current);
+    autoOn = load(autoFreq) >= 0.5f;
+    splitMode = load(mode) >= 0.5f;
+
+    if (autoOn)
+    {
+        // Follow the loudest candidate band, but only while something sibilant is happening.
+        int loudest = 0;
+        for (int i = 1; i < kCandidates; ++i)
+            if (candidateEnv[i] > candidateEnv[loudest])
+                loudest = i;
+        if (gainToDb(candidateEnv[loudest]) > gainToDb(voiceEnvelope) - 12.0f && candidateEnv[loudest] > 1.0e-4f)
+            detectedFreq = candidateHz[loudest];
+    }
+
+    const float target = autoOn ? detectedFreq : load(freq);
+    if (freqSmooth.step(target, snap, autoOn ? 0.05f : 0.3f) || snap)
+        setFrequency(freqSmooth.current);
+
     thresholdDb = load(threshold);
     maxCutDb = load(range);
 }
 
 void DeEsser::process(float* const* ch, int numChannels, int n) noexcept
 {
+    const bool listening = listen.load(std::memory_order_relaxed);
     float low[kMaxChannels], high[kMaxChannels];
 
     for (int i = 0; i < n; ++i)
     {
-        float peak = 0.0f;
+        float peak = 0.0f, voicePeak = 0.0f;
         for (int c = 0; c < numChannels; ++c)
         {
-            splitter.split(ch[c][i], c, low[c], high[c]);
+            const float x = ch[c][i];
+            if (splitMode)
+                splitter.split(x, c, low[c], high[c]); // high = everything above Freq
+            else
+            {
+                high[c] = band.process(x, c);           // high = just the "s" band
+                low[c] = x - high[c];                   // everything else (exact reconstruction)
+            }
             peak = std::max(peak, std::abs(high[c]));
+            voicePeak = std::max(voicePeak, std::abs(low[c]));
+
+            if (autoOn && c == 0)
+                for (int k = 0; k < kCandidates; ++k)
+                {
+                    const float v = std::abs(candidates[k].process(x, 0));
+                    candidateEnv[k] = v + (v > candidateEnv[k] ? candidateAttack : candidateRelease) * (candidateEnv[k] - v);
+                }
         }
 
         envelope = peak + (peak > envelope ? envAttack : envRelease) * (envelope - peak);
-        const float over = gainToDb(envelope) - thresholdDb;
+        voiceEnvelope = voicePeak + (voicePeak > voiceEnvelope ? voiceAttack : voiceRelease) * (voiceEnvelope - voicePeak);
+        // The threshold follows the body of the voice (set for around -24 dBFS),
+        // so an "s" can never raise its own threshold.
+        const float follow = juce::jlimit(-12.0f, 18.0f, gainToDb(voiceEnvelope) + 24.0f);
+        const float over = gainToDb(envelope) - (thresholdDb + follow);
         const float targetDb = over > 0.0f ? -std::min(maxCutDb, over * 0.75f) : 0.0f; // ~4:1
         const float g = dbToGain(gr.process(targetDb));
 
         for (int c = 0; c < numChannels; ++c)
-            ch[c][i] = low[c] + g * high[c];
+            ch[c][i] = listening ? high[c] : low[c] + g * high[c];
     }
     grMeter.store(-gr.state, std::memory_order_relaxed);
 }
 
 //==============================================================================
-// Compressor: feed-forward, stereo-linked peak detector, 6 dB soft knee.
+// Compressor: feed-forward, stereo-linked, 6 dB soft knee. The detector hears
+// the voice through a 100 Hz low cut (so plosives and rumble don't pump it) and
+// measures a short 5 ms RMS level, which sounds smoother on vocals than raw
+// peaks. "Mix" blends in the uncompressed voice (parallel compression).
 Compressor::Compressor(juce::AudioProcessorValueTreeState& s)
     : threshold(param(s, pid::compThreshold))
     , ratio(param(s, pid::compRatio))
     , attack(param(s, pid::compAttack))
     , release(param(s, pid::compRelease))
     , makeup(param(s, pid::compMakeup))
+    , mix(param(s, pid::compMix))
 {
 }
 
 void Compressor::prepare(double sampleRate, int)
 {
     sr = sampleRate;
+    detectorLowCut.c = biquad::highpass(sr, 100.0, 0.70710678);
+    rmsCoef = timeToCoef(5.0f, sr);
     reset();
 }
 
 void Compressor::reset() noexcept
 {
     gr.state = 0.0f;
+    meanSquare = 0.0f;
+    detectorLowCut.reset();
     grMeter.store(0.0f, std::memory_order_relaxed);
 }
 
@@ -174,16 +301,27 @@ void Compressor::update(bool snap) noexcept
     ratioValue = std::max(1.0f, load(ratio));
     gr.setTimes(load(attack), load(release), sr);
     makeupDb.step(load(makeup), snap);
+    mixAmount.step(load(mix) * 0.01f, snap);
 }
 
 void Compressor::process(float* const* ch, int numChannels, int n) noexcept
 {
     const float makeupGain = dbToGain(makeupDb.current);
+    const float wet = mixAmount.current;
 
     for (int i = 0; i < n; ++i)
     {
-        const float levelDb = gainToDb(peakAcross(ch, numChannels, i));
-        const float g = dbToGain(gr.process(compressorGainDb(levelDb, thresholdDb, ratioValue))) * makeupGain;
+        float sq = 0.0f;
+        for (int c = 0; c < numChannels; ++c)
+        {
+            const float d = detectorLowCut.process(ch[c][i], c);
+            sq = std::max(sq, d * d);
+        }
+        meanSquare = sq + rmsCoef * (meanSquare - sq);
+
+        const float levelDb = 10.0f * std::log10(std::max(meanSquare, 1.0e-12f));
+        const float compressed = dbToGain(gr.process(compressorGainDb(levelDb, thresholdDb, ratioValue))) * makeupGain;
+        const float g = (1.0f - wet) + wet * compressed;
 
         for (int c = 0; c < numChannels; ++c)
             ch[c][i] *= g;
@@ -287,8 +425,10 @@ void MultibandCompressor::process(float* const* ch, int numChannels, int n) noex
 }
 
 //==============================================================================
-// Limiter: instant attack, smooth release - the output can never exceed the
-// ceiling, and there is no lookahead (zero latency).
+// Limiter: a fast (0.3 ms) attack and smooth release keep the level under the
+// ceiling without the harshness of an instant gain jump; a soft clipper then
+// catches whatever slips through, so the output can never exceed the ceiling.
+// No lookahead (zero latency).
 Limiter::Limiter(juce::AudioProcessorValueTreeState& s)
     : ceiling(param(s, pid::limCeiling))
     , release(param(s, pid::limRelease))
@@ -298,6 +438,7 @@ Limiter::Limiter(juce::AudioProcessorValueTreeState& s)
 void Limiter::prepare(double sampleRate, int)
 {
     sr = sampleRate;
+    attackCoef = timeToCoef(0.3f, sr);
     reset();
 }
 
@@ -312,6 +453,21 @@ void Limiter::update(bool) noexcept
     releaseCoef = timeToCoef(load(release), sr);
 }
 
+namespace
+{
+// Linear up to 'knee' (as a fraction of the ceiling), then bends smoothly toward
+// the ceiling and never reaches it.
+inline float softClip(float x, float ceilingGain) noexcept
+{
+    constexpr float knee = 0.88f;
+    const float u = std::abs(x) / ceilingGain;
+    if (u <= knee)
+        return x;
+    const float bent = knee + (1.0f - knee) * std::tanh((u - knee) / (1.0f - knee));
+    return std::copysign(bent * ceilingGain, x);
+}
+} // namespace
+
 void Limiter::process(float* const* ch, int numChannels, int n) noexcept
 {
     float lowestGain = 1.0f;
@@ -319,13 +475,11 @@ void Limiter::process(float* const* ch, int numChannels, int n) noexcept
     {
         const float peak = peakAcross(ch, numChannels, i);
         const float target = peak > ceilingGain ? ceilingGain / peak : 1.0f;
-
-        // Release glides up toward the target; attack is instant. Either way gain <= target.
-        gain = target < gain ? target : target + releaseCoef * (gain - target);
+        gain = target + (target < gain ? attackCoef : releaseCoef) * (gain - target);
         lowestGain = std::min(lowestGain, gain);
 
         for (int c = 0; c < numChannels; ++c)
-            ch[c][i] *= gain;
+            ch[c][i] = softClip(ch[c][i] * gain, ceilingGain);
     }
     grMeter.store(-gainToDb(lowestGain), std::memory_order_relaxed);
 }

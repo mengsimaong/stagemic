@@ -20,11 +20,18 @@ PresetBar::PresetBar(StageMicProcessor& p)
     next.onClick = [this] { step(+1); };
     saveButton.onClick = [this] { save(); };
     menuButton.onClick = [this] { showMenu(); };
+    voiceButton.setTooltip("Measure your mic and voice for about 11 seconds, then set Input Gain, Gate and De-Ess to match");
+    voiceButton.getProperties().set("primary", true);
+    voiceButton.setColour(juce::TextButton::textColourOffId, juce::Colours::white);
+    voiceButton.onClick = [this] {
+        if (onSetUpVoice)
+            onSetUpVoice();
+    };
 
     status.setFont(theme::font(12.0f));
     status.setJustificationType(juce::Justification::centredRight);
 
-    for (auto* c : std::initializer_list<juce::Component*>{&box, &prev, &next, &saveButton, &menuButton, &status})
+    for (auto* c : std::initializer_list<juce::Component*>{&box, &prev, &next, &saveButton, &menuButton, &voiceButton, &status})
         addAndMakeVisible(c);
 
     refresh();
@@ -300,6 +307,8 @@ void PresetBar::resized()
     area.removeFromLeft(4);
     menuButton.setBounds(area.removeFromLeft(36));
     area.removeFromLeft(12);
+    voiceButton.setBounds(area.removeFromRight(150));
+    area.removeFromRight(10);
     status.setBounds(area);
 }
 

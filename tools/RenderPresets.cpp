@@ -5,6 +5,9 @@
 //
 //   stagemic_render <input.wav|flac|aiff|mp3> <output-folder> [preset names or .stagemicpreset files...]
 //
+// A preset can carry changes after '@', applied after it loads, e.g.
+//   "Hard Tune@tune_key=11,tune_scale=1"   (Hard Tune in B major)
+//
 // With no presets given, every factory preset is rendered. Also writes the
 // untouched input ("00 Dry.wav") for comparison. Audio is processed exactly as
 // in OBS: same engine, 480-sample blocks, stereo (a mono file is duplicated
@@ -99,8 +102,10 @@ int main(int argc, char* argv[])
     std::printf("%-28s peak %6.1f dBFS   rms %6.1f dBFS\n", "00 Dry", dry.peakDb, dry.rmsDb);
 
     int index = 1;
-    for (const auto& preset : presets)
+    for (const auto& entry : presets)
     {
+        const auto preset = entry.upToFirstOccurrenceOf("@", false, false);
+        const auto changes = entry.fromFirstOccurrenceOf("@", false, false);
         stagemic::StageMicProcessor processor;
         processor.setRateAndBufferSizeDetails(sampleRate, 1024);
         processor.prepareToPlay(sampleRate, 1024);
@@ -113,6 +118,14 @@ int main(int argc, char* argv[])
             std::fprintf(stderr, "skipping unknown preset: %s\n", preset.toRawUTF8());
             continue;
         }
+        for (const auto& change : juce::StringArray::fromTokens(changes, ",", ""))
+        {
+            const auto id = change.upToFirstOccurrenceOf("=", false, false).trim();
+            auto* parameter = processor.getParameters().getParameter(id);
+            if (parameter == nullptr)
+                return fail("unknown setting: " + id);
+            parameter->setValueNotifyingHost(parameter->convertTo0to1(change.fromFirstOccurrenceOf("=", false, false).getFloatValue()));
+        }
         processor.getChain().requestSnap();
 
         auto audio = source;
@@ -124,7 +137,8 @@ int main(int argc, char* argv[])
             processor.processBlock(view, midi);
         }
 
-        const auto name = juce::String(index++).paddedLeft('0', 2) + " " + processor.getCurrentPresetName();
+        const auto name = juce::String(index++).paddedLeft('0', 2) + " " + processor.getCurrentPresetName()
+                        + (changes.isNotEmpty() ? " (" + changes + ")" : juce::String());
         if (!writeWav(outDir.getChildFile(juce::File::createLegalFileName(name) + ".wav"), audio, sampleRate))
             return fail("could not write output for " + name);
 

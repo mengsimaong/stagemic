@@ -34,7 +34,7 @@ const std::vector<FactoryPreset> factoryPresets = {
     }},
 
     {"Karaoke Star", {
-        {pid::eqHighGain, 3.0f}, {pid::eqMidFreq, 3000.0f}, {pid::eqMidGain, 1.5f},
+        {pid::eqTameRange, 4.0f}, {pid::eqHighGain, 3.0f}, {pid::eqMidFreq, 3000.0f}, {pid::eqMidGain, 1.5f},
         {pid::compRatio, 4.0f}, {pid::compThreshold, -22.0f}, {pid::compMakeup, 6.0f},
         {pid::satOn, 1.0f}, {pid::satDrive, 5.0f}, {pid::satMix, 25.0f},
         {pid::dlyOn, 1.0f}, {pid::dlyTime, 280.0f}, {pid::dlyFeedback, 25.0f}, {pid::dlyMix, 14.0f},
@@ -42,7 +42,7 @@ const std::vector<FactoryPreset> factoryPresets = {
     }},
 
     {"Bright Pop", {
-        {pid::eqLowCut, 100.0f}, {pid::eqHighGain, 4.5f}, {pid::eqHighFreq, 10000.0f},
+        {pid::eqTameRange, 4.0f}, {pid::eqLowCut, 100.0f}, {pid::eqHighGain, 4.5f}, {pid::eqHighFreq, 10000.0f},
         {pid::dsThreshold, -32.0f}, {pid::dsRange, 10.0f},
         {pid::compRatio, 4.0f}, {pid::compAttack, 4.0f}, {pid::compMakeup, 6.0f},
         {pid::chOn, 1.0f}, {pid::chDepth, 25.0f}, {pid::chMix, 15.0f},
@@ -63,6 +63,36 @@ const std::vector<FactoryPreset> factoryPresets = {
         {pid::compRatio, 8.0f}, {pid::compThreshold, -26.0f}, {pid::compMakeup, 8.0f},
         {pid::satOn, 1.0f}, {pid::satDrive, 14.0f}, {pid::satMix, 70.0f},
         {pid::revOn, 0.0f},
+    }},
+
+    // Tune styles. Chromatic works with any song; set the song's key for even cleaner notes.
+    {"Hard Tune", {
+        {pid::eqTameRange, 4.0f}, {pid::tuneOn, 1.0f}, {pid::tuneSpeed, 0.0f},
+        {pid::eqLowCut, 110.0f}, {pid::eqHighGain, 4.0f}, {pid::eqMidFreq, 3000.0f}, {pid::eqMidGain, 1.0f},
+        {pid::compRatio, 4.0f}, {pid::compThreshold, -24.0f}, {pid::compMakeup, 7.0f},
+        {pid::dsThreshold, -32.0f},
+        {pid::chOn, 1.0f}, {pid::chDepth, 20.0f}, {pid::chMix, 12.0f},
+        {pid::dlyOn, 1.0f}, {pid::dlyTime, 230.0f}, {pid::dlyFeedback, 28.0f}, {pid::dlyMix, 12.0f},
+        {pid::revSize, 60.0f}, {pid::revMix, 20.0f},
+    }},
+
+    {"Pop Tune", {
+        {pid::eqTameRange, 4.0f}, {pid::tuneOn, 1.0f}, {pid::tuneSpeed, 12.0f},
+        {pid::eqLowCut, 100.0f}, {pid::eqHighGain, 4.5f}, {pid::eqHighFreq, 10000.0f},
+        {pid::dsThreshold, -32.0f}, {pid::dsRange, 10.0f},
+        {pid::compRatio, 4.0f}, {pid::compAttack, 4.0f}, {pid::compMakeup, 6.0f},
+        {pid::exOn, 1.0f},
+        {pid::chOn, 1.0f}, {pid::chDepth, 25.0f}, {pid::chMix, 14.0f},
+        {pid::revSize, 55.0f}, {pid::revMix, 20.0f},
+    }},
+
+    {"Melodic Tune", {
+        {pid::eqTameRange, 4.0f}, {pid::tuneOn, 1.0f}, {pid::tuneSpeed, 35.0f},
+        {pid::eqLowCut, 100.0f}, {pid::eqLowGain, 1.5f}, {pid::eqHighGain, 3.0f},
+        {pid::compRatio, 4.0f}, {pid::compThreshold, -24.0f}, {pid::compMakeup, 7.0f},
+        {pid::satOn, 1.0f}, {pid::satDrive, 6.0f}, {pid::satMix, 30.0f},
+        {pid::dlyOn, 1.0f}, {pid::dlyTime, 330.0f}, {pid::dlyFeedback, 30.0f}, {pid::dlyTone, 4000.0f}, {pid::dlyMix, 15.0f},
+        {pid::revSize, 75.0f}, {pid::revMix, 22.0f},
     }},
 };
 // clang-format on

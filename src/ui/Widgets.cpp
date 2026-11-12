@@ -129,6 +129,51 @@ void ValueKnob::resized()
 }
 
 //==============================================================================
+ChoiceToggle::ChoiceToggle(APVTS& state, const juce::String& id, const juce::String& name)
+    : parameter(dynamic_cast<juce::AudioParameterChoice*>(state.getParameter(id)))
+    , attachment(*state.getParameter(id), [this](float) { refresh(); }, nullptr)
+{
+    jassert(parameter != nullptr);
+    setupLabel(label, name);
+    addAndMakeVisible(label);
+
+    const bool longList = parameter->choices.size() > 3;
+    button.setTooltip(parameter->getName(64) + ": "
+                      + (longList ? juce::String("click to choose") : parameter->choices.joinIntoString(" / ") + " (click to switch)"));
+    button.onClick = [this, longList] {
+        if (!longList)
+        {
+            const int next = (parameter->getIndex() + 1) % parameter->choices.size();
+            attachment.setValueAsCompleteGesture((float)next);
+            return;
+        }
+        // Many choices (key, scale): a menu instead of cycling through them all.
+        juce::PopupMenu menu;
+        for (int i = 0; i < parameter->choices.size(); ++i)
+            menu.addItem(i + 1, parameter->choices[i], true, i == parameter->getIndex());
+        juce::Component::SafePointer<ChoiceToggle> safe(this);
+        menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&button), [safe](int result) {
+            if (safe != nullptr && result > 0)
+                safe->attachment.setValueAsCompleteGesture((float)(result - 1));
+        });
+    };
+    addAndMakeVisible(button);
+    attachment.sendInitialUpdate();
+}
+
+void ChoiceToggle::refresh()
+{
+    button.setButtonText(parameter->getCurrentChoiceName());
+}
+
+void ChoiceToggle::resized()
+{
+    auto area = getLocalBounds();
+    label.setBounds(area.removeFromBottom(14));
+    button.setBounds(area.withSizeKeepingCentre(juce::jmin(area.getWidth(), 120), 24));
+}
+
+//==============================================================================
 Fader::Fader(APVTS& state, const juce::String& id, const juce::String& name)
     : attachment(state, id, slider)
 {

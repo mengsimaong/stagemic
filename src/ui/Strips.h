@@ -2,6 +2,7 @@
 // The module panels in the lower half of the StageMic window.
 #pragma once
 
+#include "ui/Displays.h"
 #include "ui/Widgets.h"
 
 #include <memory>
@@ -10,6 +11,7 @@
 namespace stagemic
 {
 
+/** Gate / expander: threshold fader with Range, Release and Ratio knobs beside it. */
 class GateStrip final : public Section
 {
 public:
@@ -20,21 +22,26 @@ public:
 private:
     void layoutContent(juce::Rectangle<int>) override;
     Fader threshold;
-    SmallKnob range, release;
+    SmallKnob range, release, ratio;
     float gateGain = 1.0f;
 };
 
 class DeEsserStrip final : public Section
 {
 public:
-    explicit DeEsserStrip(APVTS&);
+    DeEsserStrip(APVTS&, dsp::VocalChain&);
+    ~DeEsserStrip() override;
     void updateActivity(const dsp::VocalChain::Activity&) override;
 
 private:
     void layoutContent(juce::Rectangle<int>) override;
+    dsp::VocalChain& chain;
     Fader threshold;
     ReductionMeter reduction{12.0f};
     SmallKnob freq, maxCut;
+    ChoiceToggle mode;
+    juce::TextButton autoButton{"Auto"}, listenButton{"Listen"};
+    APVTS::ButtonAttachment autoAttachment;
 };
 
 class CompressorStrip final : public Section
@@ -47,20 +54,10 @@ private:
     void layoutContent(juce::Rectangle<int>) override;
     Fader threshold;
     ReductionMeter reduction{24.0f};
-    SmallKnob ratio, attack, release, makeup;
+    SmallKnob ratio, attack, release, makeup, mix;
 };
 
-class SaturationStrip final : public Section
-{
-public:
-    explicit SaturationStrip(APVTS&);
-
-private:
-    void layoutContent(juce::Rectangle<int>) override;
-    Fader drive, mix;
-};
-
-/** Compact row: title on the left, knobs to the right (Chorus, Delay, Reverb, Limiter). */
+/** Compact row: title on the left, knobs to the right (used for the Limiter). */
 class EffectRow final : public Section
 {
 public:
@@ -73,6 +70,42 @@ private:
     ModuleId module;
     std::vector<std::unique_ptr<SmallKnob>> knobs;
     std::unique_ptr<ReductionMeter> reduction;
+};
+
+/** Several modules sharing one panel, one tab each (e.g. Chorus / Delay / Reverb).
+    Every tab has its own power switch, so all of them can run at once. */
+class TabbedModules final : public juce::Component
+{
+public:
+    struct Control
+    {
+        const char* paramId;
+        const char* label;
+        const char* tooltip = nullptr;
+    };
+    struct Tab
+    {
+        ModuleId module;
+        const char* title;
+        std::vector<Control> controls;
+    };
+
+    TabbedModules(APVTS&, std::vector<Tab> tabs, juce::String footer, int initialTab = 0, int maxColumns = 4);
+    void paint(juce::Graphics&) override;
+    void resized() override;
+    void select(int index);
+
+private:
+    struct Page
+    {
+        std::unique_ptr<ModuleTab> tab;
+        std::vector<std::unique_ptr<juce::Component>> controls;
+    };
+
+    std::vector<Page> pages;
+    juce::String footer;
+    int current = 0;
+    int maxColumns = 4;
 };
 
 } // namespace stagemic

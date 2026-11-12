@@ -4,6 +4,8 @@
 #pragma once
 
 #include "core/SpectrumTap.h"
+#include "core/dsp/Tune.h"
+#include "core/dsp/VocalChain.h"
 #include "ui/Widgets.h"
 
 #include <juce_dsp/juce_dsp.h>
@@ -78,6 +80,7 @@ private:
         const char* freqId;
         const char* gainId; // nullptr = horizontal only
         const char* qId;    // nullptr = no width control
+        bool tame = false;  // harshness tamer: height = Max Cut (drag down for more)
     };
 
     float gainToY(float db) const;
@@ -92,8 +95,22 @@ private:
 
     APVTS& state;
     std::function<double()> sampleRate;
-    std::array<Node, 4> nodes;
+    std::array<Node, 5> nodes;
     int hovered = -1, dragging = -1;
+    float tameCutDb = 0.0f; // live
+
+public:
+    /** Live cut of the harshness tamer, shown as a dip in the curve. */
+    void setTameReduction(float db)
+    {
+        if (std::abs(db - tameCutDb) > 0.05f)
+        {
+            tameCutDb = db;
+            repaint();
+        }
+    }
+
+private:
     static constexpr float rangeDb = 18.0f;
 };
 
@@ -153,7 +170,7 @@ public:
 
 private:
     std::vector<Group> groups;
-    std::vector<std::unique_ptr<ValueKnob>> fields;
+    std::vector<std::unique_ptr<juce::Component>> fields;
     std::vector<juce::Rectangle<int>> groupAreas;
 };
 
@@ -178,15 +195,48 @@ private:
 };
 
 /** EQ / Multiband display with tabs. */
+/** Tune: the sung pitch (grey) and the corrected pitch (pink) over the last few
+    seconds, on a grid of notes with the chosen key/scale highlighted. Style
+    buttons set the correction speed in one click. */
+class TuneDisplay final
+    : public juce::Component
+    , public juce::SettableTooltipClient
+{
+public:
+    TuneDisplay(APVTS& state, const dsp::Tune& tune);
+    void tick();
+    void paint(juce::Graphics&) override;
+    void resized() override;
+
+    static juce::String noteName(int midi);
+
+private:
+    struct Style
+    {
+        const char* name;
+        float speedMs;
+        const char* tip;
+    };
+    static constexpr int kShown = 640; // about 3.4 s
+    APVTS& state;
+    const dsp::Tune& tune;
+    std::array<float, kShown> input{}, output{};
+    int lastWritten = -1;
+    float centre = 64.0f;
+    juce::OwnedArray<juce::TextButton> styleButtons;
+    std::vector<Style> styles;
+    juce::Rectangle<float> plot;
+};
+
 class DisplayPanel final : public juce::Component
 {
 public:
     static constexpr int fieldRowHeight = 96;
-    DisplayPanel(APVTS& state, SpectrumTap& tap, std::function<double()> sampleRate);
+    DisplayPanel(APVTS& state, SpectrumTap& tap, std::function<double()> sampleRate, const dsp::Tune& tune);
     ~DisplayPanel() override;
 
     void tick(const dsp::VocalChain::Activity&);
-    /** 0 = EQ, 1 = Multiband. */
+    /** 0 = EQ, 1 = Multiband, 2 = Tune. */
     void select(int tab);
     void paint(juce::Graphics&) override;
     void resized() override;
@@ -195,10 +245,11 @@ private:
     SpectrumTap& tap;
     std::function<double()> sampleRate;
     SpectrumAnalyzer analyzer;
-    ModuleTab eqTab, mbTab;
+    ModuleTab eqTab, mbTab, tuneTab;
     EqDisplay eq;
     MultibandDisplay multiband;
-    FieldRow eqFields, mbFields;
+    TuneDisplay tuneDisplay;
+    FieldRow eqFields, mbFields, tuneFields;
     int current = 0;
 };
 

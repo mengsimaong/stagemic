@@ -2,6 +2,8 @@
 #pragma once
 
 #include "core/StageMicProcessor.h"
+#include "ui/ChainBar.h"
+#include "ui/VoiceSetup.h"
 #include "ui/Displays.h"
 #include "ui/MasterPanel.h"
 #include "ui/PresetBar.h"
@@ -13,7 +15,7 @@ namespace stagemic
 
 /** The StageMic window: one compact screen with every module visible.
 
-    Everything is laid out at a fixed design size (1120 x 764) inside 'content',
+    Everything is laid out at a fixed design size (1120 x 800) inside 'content',
     which is scaled as a whole when the window is resized. */
 class StageMicEditor final
     : public juce::AudioProcessorEditor
@@ -21,7 +23,7 @@ class StageMicEditor final
 {
 public:
     static constexpr int designWidth = 1120;
-    static constexpr int designHeight = 764;
+    static constexpr int designHeight = 800;
 
     explicit StageMicEditor(StageMicProcessor&);
     ~StageMicEditor() override;
@@ -35,6 +37,7 @@ public:
 
     /** 0 = EQ, 1 = Multiband. */
     void showDisplayTab(int tab) { display.select(tab); }
+    VoiceSetup& getVoiceSetup() { return voiceSetup; }
 
 private:
     void timerCallback() override { refreshFromProcessor(); }
@@ -43,14 +46,35 @@ private:
     theme::LookAndFeel lookAndFeel;
     juce::TooltipWindow tooltips{this, 700};
 
+    /** Briefly outlines the panel a chain chip was clicked for. */
+    struct Flash final : juce::Component
+    {
+        Flash() { setInterceptsMouseClicks(false, false); }
+        void show(juce::Rectangle<int> r) { target = r; alpha = 1.0f; repaint(); }
+        bool step() { if (alpha <= 0.0f) return false; alpha = juce::jmax(0.0f, alpha - 0.06f); repaint(); return true; }
+        void paint(juce::Graphics& g) override
+        {
+            if (alpha <= 0.0f) return;
+            g.setColour(juce::Colour(0xff6aa9ff).withAlpha(alpha));
+            g.drawRoundedRectangle(target.toFloat().reduced(1.0f), 8.0f, 2.5f);
+        }
+        juce::Rectangle<int> target;
+        float alpha = 0.0f;
+    };
+    void showModule(ModuleId);
+
     juce::Component content;
+    Flash flash;
+    VoiceSetup voiceSetup;
     PresetBar presetBar;
+    ChainBar chainBar;
     DisplayPanel display;
     GateStrip gate;
     DeEsserStrip deEsser;
     CompressorStrip compressor;
-    SaturationStrip saturation;
-    EffectRow chorus, delay, reverb, limiter;
+    TabbedModules color;
+    TabbedModules space;
+    EffectRow limiter;
     MasterPanel master;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(StageMicEditor)

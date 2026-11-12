@@ -59,8 +59,25 @@ message thread, which means windows are always destroyed on the right thread.
 ## Built-in chain (Phase 2)
 
 ```
-in gain → Gate → EQ → De-Esser → Compressor → Multiband → Saturation → Chorus → Delay → Reverb → Limiter → out gain
+in gain → Gate/Expander → EQ → Auto Level → Compressor → Multiband → Saturation → Exciter → De-Esser
+        → [ Chorus ‖ Delay ‖ Reverb ]  (parallel sends, mixed back onto the dry voice)
+        → Limiter → out gain
 ```
+
+That's the recommended order (De-Ess after Compressor, Warmth and Air, so it
+catches the "s" they bring back). Power users can drag modules into any order in
+the chain bar (the Limiter stays last); the order is saved with the session and
+in presets. Saved v0.2.0 setups still on that version's default order move to
+the new one; deliberately chosen orders are kept.
+
+```
+```
+
+Insert modules process the voice in series. **Send modules** (Chorus, Delay,
+Reverb) that sit next to each other in the order each get a copy of the same
+dry voice and output only their effect; the chain sums them and adds them back
+before the next insert. Delay and Reverb **duck** under the voice (full ducking
+above -24 dBFS, none below -38 dBFS, 120 ms release), so they bloom in the gaps.
 
 * `src/core/Parameters.*`: every setting (ID, range, default, unit) in one table,
   exposed through JUCE's `AudioProcessorValueTreeState`. The audio thread reads
@@ -86,7 +103,7 @@ in gain → Gate → EQ → De-Esser → Compressor → Multiband → Saturation
 
 ## The window (src/ui)
 
-One compact screen, laid out at a fixed design size (1120 x 764) and scaled as
+One compact screen, laid out at a fixed design size (1120 x 800) and scaled as
 a whole when resized:
 
 * `PresetBar`: preset browser (previous/next, drop-down), Save, and a menu with
@@ -101,6 +118,12 @@ a whole when resized:
   plus compact rows for Chorus, Delay, Reverb and Limiter. Every module has an
   LED power switch, and the dynamics modules show live gain reduction.
 * `MasterPanel`: big IN/OUT meters with peak hold, input/output gain, status.
+
+**Warmth and Air** (Saturation, Exciter) run their non-linear curves at 4x the
+sample rate through JUCE's minimum-phase polyphase IIR oversampler, measured at
+about -90 dB aliasing for a 7 kHz tone at +18 dB drive (a plain saturator:
+about -18 dB). Only their added colour is delayed, by about 0.1 ms; the dry
+voice is not.
 
 ## Real-time safety, enforced by tests
 

@@ -21,6 +21,7 @@ public:
 
     /** Called after any preset is loaded (the module order may have changed). */
     std::function<void()> onPresetLoaded;
+    std::function<void()> onSetUpVoice;
 
 private:
     struct Entry
@@ -44,7 +45,7 @@ private:
     StageMicProcessor& processor;
     juce::Array<Entry> entries;
     juce::ComboBox box;
-    juce::TextButton prev{"<"}, next{">"}, saveButton{"Save"}, menuButton{"..."};
+    juce::TextButton prev{"<"}, next{">"}, saveButton{"Save"}, menuButton{"..."}, voiceButton{"Set up my voice"};
     juce::Label status;
     std::unique_ptr<juce::FileChooser> chooser;
     int statusTicks = 0;

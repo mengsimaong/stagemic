@@ -168,16 +168,20 @@ public:
         l->setColour(juce::Label::backgroundColourId, juce::Colours::transparentBlack);
         l->setColour(juce::Label::outlineWhenEditingColourId, accent);
         l->setColour(juce::Label::backgroundWhenEditingColourId, background);
-        l->setMinimumHorizontalScale(0.75f);
+        l->setMinimumHorizontalScale(0.6f);
         return l;
     }
 
     void drawButtonBackground(juce::Graphics& g, juce::Button& b, const juce::Colour&, bool over, bool down) override
     {
         auto r = b.getLocalBounds().toFloat().reduced(0.5f);
-        g.setColour(down ? panelRaised.brighter(0.15f) : (over ? panelRaised.brighter(0.07f) : panelRaised));
+        // Buttons marked "primary" (the main action) are filled with the accent colour;
+        // a lit toggle gets an accent outline.
+        const bool primary = (bool)b.getProperties().getWithDefault("primary", false);
+        const auto base = primary ? accent : panelRaised;
+        g.setColour(down ? base.brighter(0.15f) : (over ? base.brighter(0.07f) : base));
         g.fillRoundedRectangle(r, 5.0f);
-        g.setColour(outline);
+        g.setColour(primary ? accent.brighter(0.2f) : (b.getToggleState() ? accent.withAlpha(0.8f) : outline));
         g.drawRoundedRectangle(r, 5.0f, 1.0f);
     }
 

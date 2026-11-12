@@ -169,9 +169,11 @@ EqDisplay::EqDisplay(APVTS& s, SpectrumAnalyzer& a, std::function<double()> sr)
     , nodes{{{"Low Cut", pid::eqLowCut, nullptr, nullptr},
              {"Low", pid::eqLowFreq, pid::eqLowGain, nullptr},
              {"Mid", pid::eqMidFreq, pid::eqMidGain, pid::eqMidQ},
-             {"Air", pid::eqHighFreq, pid::eqHighGain, nullptr}}}
+             {"Air", pid::eqHighFreq, pid::eqHighGain, nullptr},
+             {"Tame", pid::eqTameFreq, pid::eqTameRange, nullptr, true}}}
 {
-    setTooltip("Drag a point to shape the EQ. Mouse wheel on Mid changes its width. Double-click a point to reset it.");
+    setTooltip("Drag a point to shape the EQ. Mouse wheel on Mid changes its width. Double-click a point to reset it.\n"
+               "Point 5 (Tame) only cuts while the voice gets harsh: drag it down to allow more cut.");
 }
 
 float EqDisplay::value(const char* id) const
@@ -200,7 +202,8 @@ float EqDisplay::yToGain(float y) const
 juce::Point<float> EqDisplay::nodePosition(int i) const
 {
     const auto& n = nodes[(size_t)i];
-    return {freqToX(value(n.freqId)), gainToY(n.gainId != nullptr ? value(n.gainId) : 0.0f)};
+    const float gain = n.gainId == nullptr ? 0.0f : (n.tame ? -value(n.gainId) : value(n.gainId));
+    return {freqToX(value(n.freqId)), gainToY(gain)};
 }
 
 int EqDisplay::nodeAt(juce::Point<float> p) const
@@ -226,6 +229,8 @@ float EqDisplay::responseDb(float freq) const
     db += biquadMagnitudeDb(dsp::biquad::lowShelf(sr, value(pid::eqLowFreq), value(pid::eqLowGain)), freq, sr);
     db += biquadMagnitudeDb(dsp::biquad::peak(sr, value(pid::eqMidFreq), juce::jmax(0.1f, value(pid::eqMidQ)), value(pid::eqMidGain)), freq, sr);
     db += biquadMagnitudeDb(dsp::biquad::highShelf(sr, value(pid::eqHighFreq), value(pid::eqHighGain)), freq, sr);
+    if (tameCutDb > 0.05f && value(pid::eqTameRange) > 0.0f)
+        db += biquadMagnitudeDb(dsp::biquad::peak(sr, value(pid::eqTameFreq), 1.2, -tameCutDb), freq, sr);
     return db;
 }
 
@@ -278,9 +283,18 @@ void EqDisplay::paint(juce::Graphics& g)
             g.setColour(curveColour.withAlpha(0.25f));
             g.fillEllipse(juce::Rectangle<float>(26.0f, 26.0f).withCentre(p));
         }
+        const bool tame = nodes[(size_t)i].tame;
+        const auto pointColour = tame ? (on && value(pid::eqTameRange) > 0.0f ? theme::reduction : theme::faintText) : curveColour;
+        if (tame && on && value(pid::eqTameRange) > 0.0f)
+        {
+            // Dashed line from 0 dB down to the most it may cut.
+            const float dashes[] = {3.0f, 3.0f};
+            g.setColour(theme::reduction.withAlpha(0.6f));
+            g.drawDashedLine(juce::Line<float>(p.x, gainToY(0.0f), p.x, p.y), dashes, 2, 1.2f);
+        }
         g.setColour(on ? theme::panelRaised : theme::panel);
         g.fillEllipse(juce::Rectangle<float>(13.0f, 13.0f).withCentre(p));
-        g.setColour(curveColour);
+        g.setColour(pointColour);
         g.drawEllipse(juce::Rectangle<float>(13.0f, 13.0f).withCentre(p), 2.0f);
         g.setColour(on ? theme::text : theme::dimText);
         g.setFont(theme::font(10.0f, true));
@@ -293,7 +307,9 @@ void EqDisplay::paint(juce::Graphics& g)
     {
         const auto& n = nodes[(size_t)shown];
         juce::String text = juce::String(n.name).toUpperCase() + "   " + formatFreq(value(n.freqId));
-        if (n.gainId != nullptr)
+        if (n.tame)
+            text << "   max cut " << juce::String(value(n.gainId), 1) << " dB   now " << juce::String(tameCutDb, 1) << " dB";
+        else if (n.gainId != nullptr)
             text << "   " << (value(n.gainId) > 0 ? "+" : "") << juce::String(value(n.gainId), 1) << " dB";
         if (n.qId != nullptr)
             text << "   Q " << juce::String(value(n.qId), 2);
@@ -354,7 +370,7 @@ void EqDisplay::mouseDrag(const juce::MouseEvent& e)
     const auto& n = nodes[(size_t)dragging];
     set(n.freqId, xToFreq(e.position.x));
     if (n.gainId != nullptr)
-        set(n.gainId, yToGain(e.position.y));
+        set(n.gainId, n.tame ? -yToGain(e.position.y) : yToGain(e.position.y));
     repaint();
 }
 
@@ -570,7 +586,10 @@ FieldRow::FieldRow(APVTS& s, std::vector<Group> g)
     for (const auto& group : groups)
         for (const auto& [id, name] : group.fields)
         {
-            fields.push_back(std::make_unique<ValueKnob>(s, id, name));
+            if (dynamic_cast<juce::AudioParameterChoice*>(s.getParameter(id)) != nullptr)
+                fields.push_back(std::make_unique<ChoiceToggle>(s, id, name));
+            else
+                fields.push_back(std::make_unique<ValueKnob>(s, id, name));
             addAndMakeVisible(*fields.back());
         }
 }
@@ -654,7 +673,7 @@ void ModuleTab::paint(juce::Graphics& g)
     }
     g.setColour(selected ? theme::text : theme::dimText);
     g.setFont(theme::font(12.0f, true));
-    g.drawText(title.toUpperCase(), getLocalBounds().withTrimmedLeft(30).withTrimmedRight(8), juce::Justification::centredLeft);
+    g.drawFittedText(title.toUpperCase(), getLocalBounds().withTrimmedLeft(30).withTrimmedRight(6), juce::Justification::centredLeft, 1, 0.8f);
 }
 
 void ModuleTab::resized()
@@ -669,27 +688,205 @@ void ModuleTab::mouseUp(const juce::MouseEvent& e)
 }
 
 //==============================================================================
-DisplayPanel::DisplayPanel(APVTS& s, SpectrumTap& t, std::function<double()> sr)
+TuneDisplay::TuneDisplay(APVTS& s, const dsp::Tune& t)
+    : state(s)
+    , tune(t)
+    , styles{{"Hard", 0.0f, "Hard tune: snaps to each note instantly. The robotic stepping effect."},
+             {"Pop", 12.0f, "Pop: tight and polished, a hint of the effect on fast notes (12 ms)."},
+             {"Melodic", 35.0f, "Melodic: smooth, catchy correction for sung rap and R&B (35 ms)."},
+             {"Natural", 120.0f, "Natural: gentle correction that keeps slides and vibrato (120 ms)."}}
+{
+    input.fill(-1.0f);
+    output.fill(-1.0f);
+    for (const auto& style : styles)
+    {
+        auto* b = styleButtons.add(new juce::TextButton(style.name));
+        b->setTooltip(style.tip);
+        const float speed = style.speedMs;
+        b->onClick = [this, speed] {
+            for (const auto& [id, value] : {std::pair<const char*, float>{pid::tuneSpeed, speed}, {pid::tuneAmount, 100.0f}})
+                if (auto* p = state.getParameter(id))
+                {
+                    p->beginChangeGesture();
+                    p->setValueNotifyingHost(p->convertTo0to1(value));
+                    p->endChangeGesture();
+                }
+            repaint();
+        };
+        addAndMakeVisible(b);
+    }
+    setTooltip("Grey = what you sing, pink = what the stream hears. Lighter rows are the notes of the chosen key.");
+}
+
+juce::String TuneDisplay::noteName(int midi)
+{
+    static const char* names[] = {"C", "C#", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B"};
+    return juce::String(names[((midi % 12) + 12) % 12]) + juce::String(midi / 12 - 1);
+}
+
+void TuneDisplay::tick()
+{
+    const auto& h = tune.getHistory();
+    const int written = h.written.load(std::memory_order_acquire);
+    if (written == lastWritten)
+        return;
+    lastWritten = written;
+    float sum = 0.0f;
+    int count = 0;
+    for (int i = 0; i < kShown; ++i)
+    {
+        const int k = written - kShown + i;
+        input[(size_t)i] = k < 0 ? -1.0f : h.input[(size_t)(k % dsp::Tune::kHistory)].load(std::memory_order_relaxed);
+        output[(size_t)i] = k < 0 ? -1.0f : h.output[(size_t)(k % dsp::Tune::kHistory)].load(std::memory_order_relaxed);
+        if (output[(size_t)i] > 0.0f && i > kShown * 3 / 4)
+        {
+            sum += output[(size_t)i];
+            ++count;
+        }
+    }
+    // Follow the singer slowly so the graph doesn't jump around.
+    if (count > 0)
+        centre += (sum / (float)count - centre) * 0.15f;
+
+    // Light up the style that matches the current speed.
+    const float speed = state.getRawParameterValue(pid::tuneSpeed)->load();
+    for (size_t i = 0; i < styles.size(); ++i)
+        styleButtons[(int)i]->setToggleState(std::abs(speed - styles[i].speedMs) < 0.5f, juce::dontSendNotification);
+    repaint();
+}
+
+void TuneDisplay::resized()
+{
+    auto top = getLocalBounds().reduced(8, 6).removeFromTop(24);
+    for (int i = styleButtons.size() - 1; i >= 0; --i)
+    {
+        styleButtons[i]->setBounds(top.removeFromRight(74));
+        top.removeFromRight(4);
+    }
+    plot = getLocalBounds().toFloat().reduced(8.0f, 6.0f).withTrimmedTop(30.0f).withTrimmedLeft(36.0f);
+}
+
+void TuneDisplay::paint(juce::Graphics& g)
+{
+    const bool on = state.getRawParameterValue(pid::tuneOn)->load() >= 0.5f;
+    const int key = (int)state.getRawParameterValue(pid::tuneKey)->load();
+    const int scale = juce::jlimit(0, (int)dsp::Tune::scaleMasks.size() - 1, (int)state.getRawParameterValue(pid::tuneScale)->load());
+    const auto mask = dsp::Tune::scaleMasks[(size_t)scale];
+
+    constexpr float span = 7.0f; // semitones above and below the centre
+    auto yFor = [&](float midi) { return plot.getCentreY() - (midi - centre) / span * plot.getHeight() * 0.5f; };
+
+    // Note rows.
+    const int lowNote = (int)std::floor(centre - span), highNote = (int)std::ceil(centre + span);
+    for (int n = lowNote; n <= highNote; ++n)
+    {
+        const float y = yFor((float)n);
+        if (y < plot.getY() - 1.0f || y > plot.getBottom() + 1.0f)
+            continue;
+        const int pc = ((n - key) % 12 + 12) % 12;
+        const bool inScale = (mask & (1 << pc)) != 0;
+        const float rowH = plot.getHeight() / (2.0f * span);
+        if (inScale)
+        {
+            g.setColour(theme::panelRaised.withAlpha(pc == 0 ? 0.9f : 0.55f));
+            g.fillRect(juce::Rectangle<float>(plot.getX(), y - rowH * 0.5f, plot.getWidth(), rowH).getIntersection(plot));
+        }
+        g.setColour(pc == 0 ? theme::accent.withAlpha(0.8f) : (inScale ? theme::dimText : theme::faintText.withAlpha(0.6f)));
+        g.setFont(theme::font(10.0f, pc == 0));
+        g.drawText(noteName(n), juce::Rectangle<float>(plot.getX() - 36.0f, y - 6.0f, 32.0f, 12.0f), juce::Justification::centredRight);
+    }
+    g.setColour(theme::outline);
+    g.drawRect(plot, 1.0f);
+
+    // Pitch lines.
+    auto drawLine = [&](const std::array<float, kShown>& v, juce::Colour colour, float thickness) {
+        juce::Path p;
+        bool drawing = false;
+        for (int i = 0; i < kShown; ++i)
+        {
+            const float x = plot.getX() + plot.getWidth() * (float)i / (float)(kShown - 1);
+            if (v[(size_t)i] <= 0.0f)
+            {
+                drawing = false;
+                continue;
+            }
+            const float y = juce::jlimit(plot.getY(), plot.getBottom(), yFor(v[(size_t)i]));
+            if (!drawing)
+                p.startNewSubPath(x, y);
+            else
+                p.lineTo(x, y);
+            drawing = true;
+        }
+        g.setColour(colour);
+        g.strokePath(p, juce::PathStrokeType(thickness, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+    };
+    g.saveState();
+    g.reduceClipRegion(plot.toNearestInt());
+    drawLine(input, theme::dimText.withAlpha(0.8f), 1.5f);
+    if (on)
+        drawLine(output, theme::accent, 2.4f);
+    g.restoreState();
+
+    // Current note, top left.
+    auto header = getLocalBounds().reduced(10, 6).removeFromTop(24).toFloat();
+    const float last = input[kShown - 1], lastOut = output[kShown - 1];
+    g.setFont(theme::font(13.0f, true));
+    if (!on)
+    {
+        g.setColour(theme::faintText);
+        g.drawText("Tune is off: switch it on with the square on the tab", header, juce::Justification::centredLeft);
+    }
+    else if (last > 0.0f)
+    {
+        const int note = (int)std::lround(lastOut);
+        const int cents = (int)std::lround((last - (float)note) * 100.0f);
+        g.setColour(theme::text);
+        g.drawText(noteName(note), header.removeFromLeft(44.0f), juce::Justification::centredLeft);
+        g.setColour(theme::dimText);
+        g.setFont(theme::font(12.0f));
+        g.drawText("you sang " + juce::String(cents > 0 ? "+" : "") + juce::String(cents) + " cents", header,
+                   juce::Justification::centredLeft);
+    }
+    else
+    {
+        g.setColour(theme::faintText);
+        g.drawText("Sing to see your pitch", header, juce::Justification::centredLeft);
+    }
+    g.setColour(theme::faintText);
+    g.setFont(theme::font(10.0f));
+    g.drawText("adds 20 ms delay while on", plot.reduced(6.0f, 4.0f), juce::Justification::bottomRight);
+}
+
+//==============================================================================
+DisplayPanel::DisplayPanel(APVTS& s, SpectrumTap& t, std::function<double()> sr, const dsp::Tune& tune)
     : tap(t)
     , sampleRate(sr)
     , eqTab(s, pid::eqOn, "EQ", [this] { select(0); })
     , mbTab(s, pid::mbOn, "Multiband", [this] { select(1); })
+    , tuneTab(s, pid::tuneOn, "Tune", [this] { select(2); })
     , eq(s, analyzer, sr)
     , multiband(s, analyzer)
-    , eqFields(s, {{"1", "Low Cut", {{pid::eqLowCut, "Freq"}}},
+    , tuneDisplay(s, tune)
+    , eqFields(s, {{"1", "Low Cut", {{pid::eqLowCut, "Freq"}, {pid::eqLowCutSlope, "Slope"}, {pid::eqPlosive, "Pops"}}},
                    {"2", "Low Shelf", {{pid::eqLowFreq, "Freq"}, {pid::eqLowGain, "Gain"}}},
                    {"3", "Mid", {{pid::eqMidFreq, "Freq"}, {pid::eqMidGain, "Gain"}, {pid::eqMidQ, "Q"}}},
-                   {"4", "Air", {{pid::eqHighFreq, "Freq"}, {pid::eqHighGain, "Gain"}}}})
+                   {"4", "Air", {{pid::eqHighFreq, "Freq"}, {pid::eqHighGain, "Gain"}}},
+                   {"5", "Tame", {{pid::eqTameFreq, "Freq"}, {pid::eqTameThreshold, "Thresh"}, {pid::eqTameRange, "Max Cut"}}}})
     , mbFields(s, {{"", "Band Splits", {{pid::mbLowCross, "Low | Mid"}, {pid::mbHighCross, "Mid | High"}}},
                    {"", "Low Band", {{pid::mbLowThreshold, "Threshold"}, {pid::mbLowGain, "Gain"}}},
                    {"", "Mid Band", {{pid::mbMidThreshold, "Threshold"}, {pid::mbMidGain, "Gain"}}},
                    {"", "High Band", {{pid::mbHighThreshold, "Threshold"}, {pid::mbHighGain, "Gain"}}},
                    {"", "Dynamics", {{pid::mbRatio, "Ratio"}, {pid::mbAttack, "Attack"}, {pid::mbRelease, "Release"}}}})
+    , tuneFields(s, {{"", "Key", {{pid::tuneKey, "Key"}, {pid::tuneScale, "Scale"}, {pid::tuneVoice, "Voice"}}},
+                     {"", "Correction", {{pid::tuneSpeed, "Speed"}, {pid::tuneAmount, "Amount"}}},
+                     {"", "Voice", {{pid::tuneFormant, "Formant"}, {pid::tuneTranspose, "Pitch"}}}})
 {
-    for (auto* c : std::initializer_list<juce::Component*>{&eqTab, &mbTab, &eq, &multiband, &eqFields, &mbFields})
+    for (auto* c : std::initializer_list<juce::Component*>{&eqTab, &mbTab, &tuneTab, &eq, &multiband, &tuneDisplay, &eqFields,
+                                                           &mbFields, &tuneFields})
         addAndMakeVisible(c);
     eqTab.setTooltip("Show the EQ");
     mbTab.setTooltip("Show the multiband compressor");
+    tuneTab.setTooltip("Show Tune (pitch correction)");
     select(0);
     tap.setActive(true);
 }
@@ -704,15 +901,24 @@ void DisplayPanel::select(int tab)
     current = tab;
     eqTab.setSelected(tab == 0);
     mbTab.setSelected(tab == 1);
+    tuneTab.setSelected(tab == 2);
     eq.setVisible(tab == 0);
     eqFields.setVisible(tab == 0);
     multiband.setVisible(tab == 1);
     mbFields.setVisible(tab == 1);
+    tuneDisplay.setVisible(tab == 2);
+    tuneFields.setVisible(tab == 2);
 }
 
 void DisplayPanel::tick(const dsp::VocalChain::Activity& activity)
 {
     multiband.setReductions(activity.multibandReductionDb);
+    eq.setTameReduction(activity.tameReductionDb);
+    if (current == 2)
+    {
+        tuneDisplay.tick();
+        return;
+    }
     const bool changed = analyzer.update(tap, sampleRate ? sampleRate() : 48000.0);
     if (changed || current == 1)
         (current == 0 ? static_cast<juce::Component&>(eq) : multiband).repaint();
@@ -727,7 +933,8 @@ void DisplayPanel::paint(juce::Graphics& g)
     g.drawRoundedRectangle(r, 6.0f, 1.0f);
     g.setColour(theme::faintText);
     g.setFont(theme::font(10.5f));
-    g.drawText("OUTPUT SPECTRUM", getLocalBounds().removeFromTop(30).reduced(12, 0), juce::Justification::centredRight);
+    if (current != 2)
+        g.drawText("OUTPUT SPECTRUM", getLocalBounds().removeFromTop(30).reduced(12, 0), juce::Justification::centredRight);
 }
 
 void DisplayPanel::resized()
@@ -736,13 +943,17 @@ void DisplayPanel::resized()
     eqTab.setBounds(top.removeFromLeft(80));
     top.removeFromLeft(4);
     mbTab.setBounds(top.removeFromLeft(130));
+    top.removeFromLeft(4);
+    tuneTab.setBounds(top.removeFromLeft(90));
 
     auto body = getLocalBounds().withTrimmedTop(30).reduced(4, 2);
     const auto fieldsArea = body.removeFromBottom(fieldRowHeight).reduced(4, 4);
     eqFields.setBounds(fieldsArea);
     mbFields.setBounds(fieldsArea);
+    tuneFields.setBounds(fieldsArea);
     eq.setBounds(body);
     multiband.setBounds(body);
+    tuneDisplay.setBounds(body);
 }
 
 } // namespace stagemic
