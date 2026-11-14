@@ -1,8 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 #include "core/StageMicProcessor.h"
 
+#include "core/dsp/Safety.h"
 #include "core/presets/PresetManager.h"
 #include "ui/StageMicEditor.h"
+
+#include <cmath>
 
 #ifndef STAGEMIC_VERSION
   #define STAGEMIC_VERSION "dev"
@@ -49,6 +52,12 @@ void StageMicProcessor::prepareToPlay(double sampleRate, int maximumExpectedSamp
     chain.prepare(sampleRate, juce::jmax(1, getTotalNumInputChannels()));
     voiceAnalyzer.prepare(sampleRate);
 
+    safetyEnvelope = 0.0f;
+    sideEnergy[0] = sideEnergy[1] = 0.0f;
+    oneSidedSamples = 0;
+    mirrorFrom = -1;
+    sideSmoothing = (float)std::exp(-(double)dsp::VocalChain::kSubBlock / (0.3 * sampleRate));
+    safetyRelease = (float)std::exp(-1.0 / (0.15 * sampleRate)); // 150 ms
     inGainSmooth.reset(sampleRate, 0.02);
     outGainSmooth.reset(sampleRate, 0.02);
     inGainSmooth.setCurrentAndTargetValue(juce::Decibels::decibelsToGain(inGain->load()));
@@ -110,6 +119,9 @@ void StageMicProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mid
         for (int c = 0; c < numChannels; ++c)
             ptrs[c] = buffer.getWritePointer(c, offset);
 
+        dsp::scrubNonFinite(ptrs, numChannels, n);
+        if (chain.anyModuleActive()) // never touch audio StageMic isn't processing
+            fixOneSidedMic(ptrs, numChannels, n);
         voiceAnalyzer.push(ptrs, numChannels, n); // raw mic, before Input Gain
         applyGain(inGainSmooth, ptrs, numChannels, n);
         inPeak = juce::jmax(inPeak, peakOf(ptrs, numChannels, n));
@@ -117,12 +129,59 @@ void StageMicProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mid
         chain.process(ptrs, numChannels, n);
 
         applyGain(outGainSmooth, ptrs, numChannels, n);
+        // Only when StageMic changes the sound: with every module off and both gains
+        // at 0 dB the audio passes through untouched, bit for bit.
+        const bool changesSound = chain.anyModuleActive() || inGainSmooth.isSmoothing() || outGainSmooth.isSmoothing()
+                                  || inGainSmooth.getCurrentValue() != 1.0f || outGainSmooth.getCurrentValue() != 1.0f;
+        if (changesSound && !dsp::safetyLimit(ptrs, numChannels, n, safetyEnvelope, safetyRelease))
+        {
+            // Something inside went wrong: send silence for this moment and start every module afresh.
+            for (int c = 0; c < numChannels; ++c)
+                juce::FloatVectorOperations::clear(ptrs[c], n);
+            chain.requestSnap();
+        }
         outPeak = juce::jmax(outPeak, peakOf(ptrs, numChannels, n));
         spectrum.push(ptrs, numChannels, n);
     }
 
     inputMeter.pushPeak(inPeak);
     outputMeter.pushPeak(outPeak);
+}
+
+void StageMicProcessor::fixOneSidedMic(float* const* ch, int numChannels, int n) noexcept
+{
+    if (numChannels != 2)
+        return;
+    for (int c = 0; c < 2; ++c)
+    {
+        float sum = 0.0f;
+        for (int i = 0; i < n; ++i)
+            sum += ch[c][i] * ch[c][i];
+        sideEnergy[c] = sideSmoothing * sideEnergy[c] + (1.0f - sideSmoothing) * sum / (float)n;
+    }
+    // One side has a voice (above -60 dBFS) and the other is near silent (below -80 dBFS,
+    // and 40 dB quieter) for a whole second: copy the voice to the silent side. Stops as
+    // soon as the silent side carries real sound (a true stereo source).
+    const int loud = sideEnergy[0] >= sideEnergy[1] ? 0 : 1;
+    const bool oneSided = sideEnergy[loud] > 1.0e-6f && sideEnergy[1 - loud] < 1.0e-8f
+                          && sideEnergy[1 - loud] < sideEnergy[loud] * 1.0e-4f;
+    if (mirrorFrom >= 0)
+    {
+        if (sideEnergy[1 - mirrorFrom] > 1.0e-7f)
+            mirrorFrom = -1, oneSidedSamples = 0;
+    }
+    else if (oneSided)
+    {
+        oneSidedSamples += n;
+        if (oneSidedSamples > (int)preparedSampleRate.load())
+            mirrorFrom = loud;
+    }
+    else
+    {
+        oneSidedSamples = 0;
+    }
+    if (mirrorFrom >= 0)
+        juce::FloatVectorOperations::copy(ch[1 - mirrorFrom], ch[mirrorFrom], n);
 }
 
 juce::AudioProcessorEditor* StageMicProcessor::createEditor()
@@ -140,7 +199,10 @@ void StageMicProcessor::getStateInformation(juce::MemoryBlock& destData)
     state.setProperty("preset", currentPresetName, nullptr);
     state.setProperty("order", dsp::VocalChain::orderToString(chain.getOrder()), nullptr);
     state.setProperty("voiceSetup", voiceSetupDone, nullptr);
+    state.setProperty("voiceSetupOffered", voiceSetupOffered, nullptr);
     state.setProperty("advanced", advancedMode, nullptr);
+    if (editorWidth > 0)
+        state.setProperty("editorWidth", editorWidth, nullptr);
     state.appendChild(parameters.copyState(), nullptr);
 
     if (auto xml = state.createXml())
@@ -167,7 +229,9 @@ void StageMicProcessor::setStateInformation(const void* data, int sizeInBytes)
     applySoundTree(params, order);
 
     voiceSetupDone = (bool)state.getProperty("voiceSetup", false);
+    voiceSetupOffered = (bool)state.getProperty("voiceSetupOffered", false);
     advancedMode = (bool)state.getProperty("advanced", false);
+    editorWidth = (int)state.getProperty("editorWidth", 0);
     if (state.hasProperty("preset"))
         currentPresetName = state.getProperty("preset").toString();
 
@@ -181,6 +245,15 @@ void StageMicProcessor::applySoundTree(const juce::ValueTree& params, const juce
     juce::ValueTree fresh(paramsTag);
     if (params.isValid())
         fresh.copyPropertiesAndChildrenFrom(params, nullptr);
+    // A damaged or hand-edited file may hold values that aren't numbers ("nan", "inf"):
+    // drop those so the setting falls back to its default (out-of-range numbers are
+    // clamped to the setting's range when applied).
+    for (int i = fresh.getNumChildren(); --i >= 0;)
+    {
+        const auto child = fresh.getChild(i);
+        if (child.hasProperty("value") && !std::isfinite((double)child.getProperty("value")))
+            fresh.removeChild(i, nullptr);
+    }
     parameters.replaceState(fresh);
 
     const auto parsed = dsp::VocalChain::orderFromString(order);
@@ -218,15 +291,15 @@ void StageMicProcessor::resetToDefaults()
     restoreMicSettings(mic);
 }
 
-std::array<float, 3> StageMicProcessor::captureMicSettings()
+std::array<float, 4> StageMicProcessor::captureMicSettings()
 {
-    std::array<float, 3> values{};
+    std::array<float, 4> values{};
     for (size_t i = 0; i < values.size(); ++i)
         values[i] = parameters.getRawParameterValue(micSettings[i])->load();
     return values;
 }
 
-void StageMicProcessor::restoreMicSettings(const std::array<float, 3>& values)
+void StageMicProcessor::restoreMicSettings(const std::array<float, 4>& values)
 {
     if (!voiceSetupDone)
         return;
@@ -250,6 +323,7 @@ void StageMicProcessor::applyVoiceSetup(const VoiceAnalyzer::Result& r)
         return;
     setParameterValue(pid::inGain, r.inputGainDb);
     setParameterValue(pid::gateThreshold, r.gateThresholdDb);
+    setParameterValue(pid::gateRatio, r.gateRatio);
     if (r.sibilantHz > 0.0f)
         setParameterValue(pid::dsFreq, r.sibilantHz);
     voiceSetupDone = true;

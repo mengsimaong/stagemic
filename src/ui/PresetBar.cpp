@@ -325,7 +325,18 @@ void PresetBar::setMode(bool advanced)
 void PresetBar::paint(juce::Graphics& g)
 {
     auto logo = getLocalBounds().removeFromLeft(196).withTrimmedLeft(2).reduced(0, 4);
-    neoncat::paintHead(g, logo.removeFromLeft(38).toFloat().reduced(1.0f, 2.0f), theme::accent);
+    {
+        // The neon head is drawn once into a picture (the glow is costly to draw).
+        const auto headArea = logo.removeFromLeft(38).toFloat().reduced(1.0f, 2.0f);
+        if (logoImage.isNull())
+        {
+            constexpr float oversample = 3.0f;
+            logoImage = juce::Image(juce::Image::ARGB, (int)(headArea.getWidth() * oversample), (int)(headArea.getHeight() * oversample), true);
+            juce::Graphics lg(logoImage);
+            neoncat::paintHead(lg, logoImage.getBounds().toFloat(), theme::accent);
+        }
+        g.drawImage(logoImage, headArea);
+    }
     logo.removeFromLeft(4);
     g.setColour(theme::accentSoft);
     g.setFont(theme::font(11.0f, true).withKerningFactor(0.25f));

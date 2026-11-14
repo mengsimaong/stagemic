@@ -8,7 +8,23 @@
 
 Updating from an earlier version: just run the new installer. Your filter, its settings and your presets stay.
 
-## New in 0.4.0
+## New in 0.4.1
+
+* **The window fits small laptop screens** (1366 x 768, or 1080p at 125-150% scaling): it opens shrunk
+  to fit, on the screen you're using, and remembers the size you choose.
+* **First open welcomes you with "Set up my voice"** (once; "Skip for now" skips it).
+* **Set up my voice now really silences a laptop fan or hiss between phrases**: it measures the noise's
+  peaks (what the gate actually reacts to) and uses a firmer gate in noisy rooms.
+* **Mic on one side only** (common with audio interfaces, e.g. input 1 = left): heard on both sides automatically.
+* **Safety:** the output can never pass 0 dBFS, even with Output turned way up and the Limiter off; and a
+  glitch from a driver or another filter can no longer break the sound until OBS restarts.
+* A damaged or hand-edited preset file can no longer break the sound: settings that aren't valid
+  numbers fall back to their defaults.
+* Window: lighter on the CPU (cached cat and logo, redraws only what changes); a closed or minimised
+  window now costs the audio nothing at all.
+* Tune: when it's off, the graph explains what it does and how to switch it on.
+
+## From 0.4.0
 
 * **New name: Paopoa StageMic.**
 * **Simple / Advanced mode** (switch in the header). Simple, the new default, shows just the essentials

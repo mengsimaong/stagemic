@@ -30,7 +30,7 @@ MasterPanel::MasterPanel(APVTS& s)
 
 void MasterPanel::setLevelerGain(float db)
 {
-    if (std::abs(db - levelerDb) > 0.05f)
+    if (std::abs(db - levelerDb) >= 0.1f) // the read-out shows one decimal
     {
         levelerDb = db;
         repaint(levelArea.withHeight(24));
@@ -51,7 +51,7 @@ void MasterPanel::setLevels(float inPeak, float outPeak)
         {
             inPeakDb = inDb;
             outPeakDb = outDb;
-            peakHoldTicks = 60;
+            peakHoldTicks = 40; // 2 s at 20 updates a second
         }
         inPeakDb = juce::jmax(inPeakDb, inDb);
         outPeakDb = juce::jmax(outPeakDb, outDb);

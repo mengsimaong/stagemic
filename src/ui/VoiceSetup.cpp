@@ -37,8 +37,16 @@ void VoiceSetup::startMeasuring()
     setStep(Step::Measuring);
 }
 
+void VoiceSetup::openWelcome()
+{
+    open();
+    welcome = true;
+    setStep(Step::Intro);
+}
+
 void VoiceSetup::close()
 {
+    welcome = false;
     processor.getVoiceAnalyzer().cancel();
     setVisible(false);
 }
@@ -55,7 +63,7 @@ void VoiceSetup::setStep(Step s)
         case Step::Intro:
             primary.setButtonText("Start");
             primary.onClick = [this] { startMeasuring(); };
-            secondary.setButtonText("Cancel");
+            secondary.setButtonText(welcome ? "Skip for now" : "Cancel");
             secondary.onClick = [this] { close(); };
             break;
 
@@ -111,7 +119,7 @@ juce::StringArray VoiceSetup::describe(const VoiceAnalyzer::Result& r, float cur
         return out;
     }
     out.add("Input Gain:  " + db(currentInputGainDb) + "  ->  " + db(r.inputGainDb));
-    out.add("Gate opens at:  " + db(r.gateThresholdDb, 0));
+    out.add("Gate opens at:  " + db(r.gateThresholdDb, 0) + (r.gateRatio > 2.0f ? "  (firmer, to hide the room noise)" : ""));
     out.add(r.sibilantHz > 0.0f ? "Your \"s\" sounds sit around " + juce::String(r.sibilantHz / 1000.0f, 1) + " kHz (De-Ess set there)"
                                 : "Not enough \"s\" sounds to tune the De-Ess (it stays as it is)");
     out.add("Room noise:  " + db(r.noiseDb, 0) + "   Voice:  " + db(r.voiceDb, 0)
@@ -154,7 +162,8 @@ void VoiceSetup::paint(juce::Graphics& g)
     auto area = c.reduced(24);
     g.setColour(theme::text);
     g.setFont(theme::font(20.0f, true));
-    g.drawText("Set up my voice", area.removeFromTop(30), juce::Justification::centredLeft);
+    g.drawText(welcome && step == Step::Intro ? "Welcome! Let's set up your mic" : "Set up my voice", area.removeFromTop(30),
+               juce::Justification::centredLeft);
     area.removeFromTop(8);
     area.removeFromBottom(46);
 

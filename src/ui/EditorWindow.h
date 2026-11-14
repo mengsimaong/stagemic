@@ -19,6 +19,7 @@ public:
     void closeButtonPressed() override;
 
 private:
+    void fitOnScreen();
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(EditorWindow)
 };
 

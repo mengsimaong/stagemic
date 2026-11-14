@@ -88,9 +88,15 @@ public:
     /** Window layout: Simple (default) or Advanced. Saved with the OBS scene. Message thread. */
     bool isAdvancedMode() const noexcept { return advancedMode; }
     void setAdvancedMode(bool on) { advancedMode = on; }
+    /** The window width the user last chose (0 = never resized), saved with the settings. */
+    int getEditorWidth() const noexcept { return editorWidth; }
+    void setEditorWidth(int width) noexcept { editorWidth = width; }
     void clearVoiceSetup() { voiceSetupDone = false; }
+    /** "Set up my voice" opens by itself the first time the window opens (once). */
+    bool wasVoiceSetupOffered() const noexcept { return voiceSetupOffered; }
+    void setVoiceSetupOffered() noexcept { voiceSetupOffered = true; }
     /** The settings kept across presets once the voice is set up. */
-    static constexpr const char* micSettings[] = {pid::inGain, pid::gateThreshold, pid::dsFreq};
+    static constexpr const char* micSettings[] = {pid::inGain, pid::gateThreshold, pid::gateRatio, pid::dsFreq};
     LevelMeter& getInputMeter() noexcept { return inputMeter; }
     LevelMeter& getOutputMeter() noexcept { return outputMeter; }
 
@@ -103,8 +109,8 @@ public:
 
 private:
     void applySoundTree(const juce::ValueTree& params, const juce::String& order);
-    std::array<float, 3> captureMicSettings();
-    void restoreMicSettings(const std::array<float, 3>&);
+    std::array<float, 4> captureMicSettings();
+    void restoreMicSettings(const std::array<float, 4>&);
     void setParameterValue(const char* id, float value);
     static float peakOf(float* const* ch, int numChannels, int n) noexcept;
 
@@ -115,13 +121,24 @@ private:
     std::atomic<float>* inGain = nullptr;
     std::atomic<float>* outGain = nullptr;
     juce::SmoothedValue<float> inGainSmooth, outGainSmooth;
+    float safetyEnvelope = 0.0f, safetyRelease = 0.9999f; // the last-line safety limiter
+    // One-sided mic fix: many audio interfaces put the mic on the left channel only.
+    void fixOneSidedMic(float* const* ch, int numChannels, int n) noexcept;
+    float sideEnergy[2] = {}, sideSmoothing = 0.99f;
+    int oneSidedSamples = 0, mirrorFrom = -1;
+public:
+    /** Which channel is being copied to the other (-1 = none), for the tests and the UI. */
+    int getMirroredChannel() const noexcept { return mirrorFrom; }
+private:
 
     LevelMeter inputMeter;
     LevelMeter outputMeter;
     SpectrumTap spectrum;
     VoiceAnalyzer voiceAnalyzer;
     bool voiceSetupDone = false;
+    bool voiceSetupOffered = false;
     bool advancedMode = false;
+    int editorWidth = 0;
     juce::String hostDescription{"Unknown host"};
     juce::String currentPresetName{"Clean Vocal"};
     std::atomic<double> preparedSampleRate{0.0};

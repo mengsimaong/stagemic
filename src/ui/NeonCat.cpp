@@ -90,7 +90,7 @@ juce::Rectangle<float> paintWalking(juce::Graphics& g, float x, float baseline, 
     p.startNewSubPath(57.0f, hy + 2.5f);
     p.lineTo(62.5f, hy + 1.5f);
     // Tail, curling up and swaying.
-    const float sway = 2.5f * std::sin(phase * 0.5f);
+    const float sway = 2.5f * std::sin(phase);
     p.startNewSubPath(17.0f, 17.0f + bob);
     p.cubicTo(9.0f, 15.0f, 6.0f + sway, 6.0f, 11.0f + sway, 1.0f);
     // Legs: diagonal pairs move together (a real cat's walk).
@@ -124,18 +124,48 @@ void NeonCatStrip::advance()
         return;
     const float height = (float)getHeight() - 3.0f;
     const float catWidth = 64.0f * height / 36.0f;
-    x += 2.2f;                       // ~66 px a second at 30 frames a second
-    phase += 0.32f;                  // about 1.5 strides a second
+    x += 3.3f;                       // ~66 px a second at 20 frames a second
+    phase += 0.48f;                  // about 1.5 strides a second
+    if (phase > juce::MathConstants<float>::twoPi)
+        phase -= juce::MathConstants<float>::twoPi;
     if (x > (float)getWidth() + 10.0f)
         x = -catWidth - 10.0f;
     const auto area = juce::Rectangle<float>(x - 12.0f, 0.0f, catWidth + 24.0f, (float)getHeight()).getSmallestIntegerContainer();
-    repaint(lastArea.getUnion(area));
+    // Repaint where the cat was and where it is now (separately: when it wraps
+    // around, one region spanning the whole width would be wasteful).
+    repaint(lastArea);
+    repaint(area);
     lastArea = area;
 }
 
 void NeonCatStrip::paint(juce::Graphics& g)
 {
-    neoncat::paintWalking(g, x, (float)getHeight() - 2.0f, (float)getHeight() - 3.0f, phase, theme::accent);
+    // The neon glow is costly to draw, so the walk cycle is drawn once into a few
+    // small pictures, and each frame just copies one into place.
+    const float height = (float)getHeight() - 3.0f;
+    constexpr float pad = 8.0f;
+    // Drawn at the screen's real pixel size, so showing a frame is a plain copy.
+    const float oversample = juce::jmax(1.0f, g.getInternalContext().getPhysicalPixelScaleFactor());
+    const float frameW = 64.0f * height / 36.0f + 2.0f * pad, frameH = (float)getHeight();
+    if (frames.empty() || cachedHeight != getHeight() || std::abs(cachedScale - oversample) > 0.01f)
+    {
+        frames.clear();
+        cachedHeight = getHeight();
+        cachedScale = oversample;
+        for (int i = 0; i < kFrames; ++i)
+        {
+            juce::Image img(juce::Image::ARGB, (int)std::ceil(frameW * oversample), (int)std::ceil(frameH * oversample), true);
+            juce::Graphics fg(img);
+            fg.addTransform(juce::AffineTransform::scale(oversample));
+            neoncat::paintWalking(fg, pad, frameH - 2.0f, height, juce::MathConstants<float>::twoPi * (float)i / (float)kFrames,
+                                  theme::accent);
+            frames.push_back(img);
+        }
+    }
+    const int index = (int)std::lround(phase / juce::MathConstants<float>::twoPi * (float)kFrames) % kFrames;
+    // Snap to a whole screen pixel so no resampling is needed.
+    const float left = std::round((x - pad) * oversample) / oversample;
+    g.drawImageTransformed(frames[(size_t)index], juce::AffineTransform::scale(1.0f / oversample).translated(left, 0.0f));
 }
 
 } // namespace stagemic

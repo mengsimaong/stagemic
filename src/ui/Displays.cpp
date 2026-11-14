@@ -781,7 +781,10 @@ void TuneDisplay::tick()
     const float speed = state.getRawParameterValue(pid::tuneSpeed)->load();
     for (size_t i = 0; i < styles.size(); ++i)
         styleButtons[(int)i]->setToggleState(std::abs(speed - styles[i].speedMs) < 0.5f, juce::dontSendNotification);
-    repaint();
+    // Redraw only what changes: the pitch lines and the "you sang" line, not the
+    // style buttons or the panel behind them.
+    repaint(plot.getSmallestIntegerContainer().expanded(2));
+    repaint(getLocalBounds().withHeight(36).withRight(styleButtons.isEmpty() ? getWidth() : styleButtons.getFirst()->getX()));
 }
 
 void TuneDisplay::resized()
@@ -831,7 +834,7 @@ void TuneDisplay::paint(juce::Graphics& g)
     auto drawLine = [&](const std::array<float, kShown>& v, juce::Colour colour, float thickness) {
         juce::Path p;
         bool drawing = false;
-        for (int i = 0; i < kShown; ++i)
+        for (int i = 0; i < kShown; i += 2) // every other point: plenty for the eye, half the work
         {
             const float x = plot.getX() + plot.getWidth() * (float)i / (float)(kShown - 1);
             if (v[(size_t)i] <= 0.0f)
@@ -863,7 +866,12 @@ void TuneDisplay::paint(juce::Graphics& g)
     if (!on)
     {
         g.setColour(theme::faintText);
-        g.drawText("Tune is off: switch it on with the square on the tab", header, juce::Justification::centredLeft);
+        g.drawText("Tune is off", header, juce::Justification::centredLeft);
+        // Say what it does and how to start, in the middle of the empty graph.
+        g.setColour(theme::dimText);
+        g.setFont(theme::font(14.0f, true));
+        g.drawFittedText("Tune corrects your pitch while you sing.\nSwitch it on with the square next to Tune,\nthen pick your song's key and a style.",
+                         plot.reduced(16.0f).toNearestInt(), juce::Justification::centred, 3);
     }
     else if (last > 0.0f)
     {
@@ -937,10 +945,21 @@ void DisplayPanel::select(int tab)
     mbFields.setVisible(tab == 1);
     tuneDisplay.setVisible(tab == 2);
     tuneFields.setVisible(tab == 2);
+    setLive(live);
+}
+
+void DisplayPanel::setLive(bool shouldBeLive)
+{
+    live = shouldBeLive;
+    // The spectrum is only needed on the EQ and Multiband tabs while they're on screen;
+    // otherwise the audio thread doesn't even feed it.
+    tap.setActive(live && current != 2);
 }
 
 void DisplayPanel::tick(const dsp::VocalChain::Activity& activity)
 {
+    if (!live)
+        return;
     multiband.setReductions(activity.multibandReductionDb);
     eq.setTameReduction(activity.tameReductionDb);
     if (current == 2)

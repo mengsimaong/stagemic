@@ -52,6 +52,7 @@ private:
     juce::TextButton simpleButton{"SIMPLE"}, advancedButton{"ADVANCED"};
     juce::Label status;
     std::unique_ptr<juce::FileChooser> chooser;
+    juce::Image logoImage;
     int statusTicks = 0;
 
     class StatusTimer : public juce::Timer

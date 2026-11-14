@@ -243,6 +243,8 @@ public:
     void tick(const dsp::VocalChain::Activity&);
     /** 0 = EQ, 1 = Multiband, 2 = Tune. */
     void select(int tab);
+    /** On screen or not (Simple mode hides it): when not, it does no work at all. */
+    void setLive(bool);
     void paint(juce::Graphics&) override;
     void resized() override;
 
@@ -255,7 +257,8 @@ private:
     MultibandDisplay multiband;
     TuneDisplay tuneDisplay;
     FieldRow eqFields, mbFields, tuneFields;
-    int current = 0;
+    int current = 0, frame = 0;
+    bool live = true;
 };
 
 } // namespace stagemic

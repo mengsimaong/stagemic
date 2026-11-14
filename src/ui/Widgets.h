@@ -93,6 +93,7 @@ public:
 
 private:
     juce::String label;
+    float paintedLevel = -1.0f, paintedHold = -1.0f;
     float level = 0.0f, hold = 0.0f;
     int holdTicks = 0;
 };

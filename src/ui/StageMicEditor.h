@@ -28,6 +28,9 @@ public:
     static constexpr int designHeight = 832;
     static constexpr int footerHeight = 32; // where the cat walks
     static constexpr int bodyBottom = designHeight - footerHeight;
+    /** How often meters, graphs and the cat update. 20 is smooth for meters and keeps
+        the window light (it runs on OBS's own interface thread). */
+    static constexpr int refreshRateHz = 20;
 
     explicit StageMicEditor(StageMicProcessor&);
     ~StageMicEditor() override;
@@ -54,8 +57,18 @@ private:
     struct Flash final : juce::Component
     {
         Flash() { setInterceptsMouseClicks(false, false); }
-        void show(juce::Rectangle<int> r) { target = r; alpha = 1.0f; repaint(); }
-        bool step() { if (alpha <= 0.0f) return false; alpha = juce::jmax(0.0f, alpha - 0.06f); repaint(); return true; }
+        // Hidden while idle, so it costs nothing on the frames when nothing flashes.
+        void show(juce::Rectangle<int> r) { target = r; alpha = 1.0f; setVisible(true); repaint(); }
+        bool step()
+        {
+            if (alpha <= 0.0f)
+                return false;
+            alpha = juce::jmax(0.0f, alpha - 0.09f);
+            repaint();
+            if (alpha <= 0.0f)
+                setVisible(false);
+            return true;
+        }
         void paint(juce::Graphics& g) override
         {
             if (alpha <= 0.0f) return;
@@ -82,6 +95,8 @@ private:
     EffectRow limiter;
     MasterPanel master;
     SimpleView simple;
+    bool wasShowing = true;
+    bool sizeRestored = false; // ignore the sizes set while building the window
     NeonCatStrip cat;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(StageMicEditor)

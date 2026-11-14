@@ -33,6 +33,7 @@ public:
     struct Measurements
     {
         std::array<int, kBins> noise{}, voice{};
+        std::array<int, kBins> noisePeak{}; // room noise as the Gate hears it (its fast peak follower)
         float peakDb = -120.0f;
         int sibilantWindows = 0;
         std::array<double, kCandidates> sibilance{};
@@ -43,7 +44,8 @@ public:
     {
         bool heardVoice = false;
         float noiseDb = -120.0f, voiceDb = -120.0f, peakDb = -120.0f; // raw mic levels
-        float inputGainDb = 0.0f, gateThresholdDb = -55.0f;
+        float noisePeakDb = -120.0f; // the room noise's peaks, as the Gate sees them
+        float inputGainDb = 0.0f, gateThresholdDb = -55.0f, gateRatio = 2.0f;
         float sibilantHz = 0.0f; // 0 = not enough "s" sounds to tell
         bool clipped = false, noisy = false, veryQuiet = false;
     };
@@ -81,6 +83,15 @@ public:
         const float noiseAfter = r.noiseDb + r.inputGainDb, voiceAfter = r.voiceDb + r.inputGainDb;
         float gate = noiseAfter + 0.35f * (voiceAfter - noiseAfter);
         gate = std::clamp(gate, noiseAfter + 6.0f, std::max(noiseAfter + 6.0f, voiceAfter - 15.0f));
+        // The Gate reacts to peaks, and noise (a laptop fan, hiss) peaks about 10 dB above
+        // its average: keep the threshold above those peaks, or the noise holds it open.
+        // But never so high that it cuts into the voice (a very noisy room is flagged instead).
+        r.noisePeakDb = percentile(m.noisePeak, 0, 0.9f);
+        const float noisePeakAfter = r.noisePeakDb + r.inputGainDb;
+        gate = std::max(gate, std::min(noisePeakAfter + 6.0f, voiceAfter - 6.0f));
+        // Clearly audible noise (a fan, hiss; quiet rooms sit around -65 dBFS or lower): a
+        // firmer gate, so it really goes quiet between phrases. Quiet rooms keep the gentle one.
+        r.gateRatio = noiseAfter > -58.0f ? 4.0f : 2.0f;
         r.gateThresholdDb = std::round(std::clamp(gate, -80.0f, -10.0f));
 
         r.clipped = r.peakDb > -1.0f;
@@ -124,6 +135,12 @@ public:
             x *= norm;
 
             peakAbs = std::max(peakAbs, std::abs(x));
+            // Same peak follower as the Gate (0.3 ms attack, 30 ms release, loudest channel).
+            float across = 0.0f;
+            for (int c = 0; c < numChannels; ++c)
+                across = std::max(across, std::abs(ch[c][i]));
+            gateEnvelope = across + (across > gateEnvelope ? envAttack : envRelease) * (gateEnvelope - across);
+            windowEnvelopeMax = std::max(windowEnvelopeMax, gateEnvelope);
             windowSum += (double)x * x;
             const float b = body.process(x, 0), h = high.process(x, 0);
             bodySum += (double)b * b;
@@ -160,6 +177,9 @@ private:
         m = {};
         peakAbs = 0.0f;
         windowLength = std::max(1, (int)(sr * 0.05));
+        envAttack = (float)std::exp(-1.0 / (0.0003 * sr));
+        envRelease = (float)std::exp(-1.0 / (0.030 * sr));
+        gateEnvelope = 0.0f;
         totalWindows = 0;
         body.c = dsp::biquad::bandPass(sr, 400.0, 0.5);
         high.c = dsp::biquad::highpass(sr, 4000.0, 0.707);
@@ -178,6 +198,7 @@ private:
     void clearWindow() noexcept
     {
         windowCount = 0;
+        windowEnvelopeMax = 0.0f;
         windowSum = bodySum = highSum = 0.0;
         bandSum.fill(0.0);
     }
@@ -192,7 +213,10 @@ private:
         {
             // Skip the first quarter second: the click of pressing "Start".
             if (totalWindows >= 5)
+            {
                 ++m.noise[(size_t)binOf(db)];
+                ++m.noisePeak[(size_t)binOf(windowEnvelopeMax > 1.0e-6f ? 20.0f * std::log10(windowEnvelopeMax) : -120.0f)];
+            }
             if (++totalWindows >= silenceWindows)
             {
                 noiseFloor = percentile(m.noise, 0, 0.5f);
@@ -234,6 +258,7 @@ private:
     double windowSum = 0.0, bodySum = 0.0, highSum = 0.0;
     std::array<double, kCandidates> bandSum{};
     float noiseFloor = -120.0f, peakAbs = 0.0f;
+    float envAttack = 0.0f, envRelease = 0.0f, gateEnvelope = 0.0f, windowEnvelopeMax = 0.0f;
 };
 
 } // namespace stagemic

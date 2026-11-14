@@ -28,13 +28,17 @@ class NeonCatStrip final : public juce::Component
 {
 public:
     NeonCatStrip();
-    /** Moves the cat one frame on (call from the window's 30 Hz timer). */
+    /** Moves the cat one frame on (call from the window's 20 Hz timer). */
     void advance();
     void paint(juce::Graphics&) override;
 
 private:
+    static constexpr int kFrames = 32; // one walk cycle
     float x = -60.0f, phase = 0.0f;
     juce::Rectangle<int> lastArea;
+    std::vector<juce::Image> frames;
+    int cachedHeight = 0;
+    float cachedScale = 0.0f;
 };
 
 } // namespace stagemic

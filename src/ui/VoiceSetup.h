@@ -20,6 +20,8 @@ public:
     explicit VoiceSetup(StageMicProcessor&);
 
     void open();
+    /** The first-time welcome: same steps, friendlier title, "Skip for now". */
+    void openWelcome();
     void startMeasuring();
     void close();
     /** Called by the window's timer while visible. */
@@ -39,6 +41,7 @@ private:
 
     StageMicProcessor& processor;
     Step step = Step::Intro;
+    bool welcome = false;
     VoiceAnalyzer::Result result;
     juce::StringArray lines;
     float level = 0.0f; // live mic level for the little meter, 0..1

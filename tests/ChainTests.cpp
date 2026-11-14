@@ -2,11 +2,13 @@
 // Phase 2: built-in effects, presets, real-time safety, zero latency and CPU use.
 #include "AllocationGuard.h"
 #include "TestHelpers.h"
+#include "core/dsp/Safety.h"
 #include "core/presets/PresetManager.h"
 
 #include <juce_dsp/juce_dsp.h>
 
 #include <chrono>
+#include <limits>
 
 namespace stagemic::test
 {
@@ -941,6 +943,9 @@ private:
                 setParam(*p, pid::satDrive, 14.0f);
                 setParam(*p, pid::satMix, 70.0f);
                 setParam(*p, pid::satCharacter, 60.0f);
+                // This much drive pushes the voice past 0 dBFS (Limiter off), where the
+                // output safety limiter steps in; keep under it to hear Warmth itself.
+                setParam(*p, pid::outGain, -12.0f);
                 p->getChain().requestSnap();
                 juce::AudioBuffer<float> b(2, (int)sr * 2);
                 for (int i = 0; i < b.getNumSamples(); ++i)
@@ -974,6 +979,109 @@ private:
                            + juce::String(sat, 1) + " dB");
                 expectLessThan(sat, clean + 6.0, "no thump");
             }
+        }
+
+        beginTest("Broken input (NaN / infinity) never breaks the sound for good");
+        {
+            for (const auto& preset : PresetManager::getFactoryPresetNames())
+            {
+                auto p = makeProcessor();
+                p->getPresetManager().loadFactoryPreset(preset);
+                setParam(*p, pid::tuneOn, 1.0f);
+                p->getChain().requestSnap();
+                auto before = sine(220.0, 0.3f, 4800);
+                processSignal(*p, before);
+                auto bad = sine(220.0, 0.3f, 480);
+                for (int i = 0; i < 480; i += 3)
+                    bad.setSample(0, i, i % 2 ? std::numeric_limits<float>::quiet_NaN() : std::numeric_limits<float>::infinity());
+                processSignal(*p, bad);
+                auto after = sine(220.0, 0.3f, 48000);
+                processSignal(*p, after);
+                bool finite = true;
+                for (int c = 0; c < 2; ++c)
+                    for (int i = 0; i < after.getNumSamples(); ++i)
+                        finite = finite && std::isfinite(after.getSample(c, i));
+                expect(finite, preset + ": output stays a number");
+                expectGreaterThan(after.getRMSLevel(0, 24000, 24000), 0.01f, preset + ": the voice comes back");
+            }
+        }
+
+        beginTest("A mic on one side only (common with audio interfaces) is heard on both sides");
+        {
+            auto p = makeProcessor();
+            p->getPresetManager().loadFactoryPreset("Clean Vocal");
+            auto leftOnly = sine(220.0, 0.2f, 48000 * 3);
+            leftOnly.clear(1, 0, leftOnly.getNumSamples());
+            processSignal(*p, leftOnly);
+            expectEquals(p->getMirroredChannel(), 0);
+            const float left = leftOnly.getRMSLevel(0, 48000 * 2, 48000), right = leftOnly.getRMSLevel(1, 48000 * 2, 48000);
+            expectWithinAbsoluteError(juce::Decibels::gainToDecibels(right / left), 0.0f, 1.0f, "same level both sides");
+
+            // A real stereo source (quiet right side, but not silent) is left alone.
+            auto q = makeProcessor();
+            q->getPresetManager().loadFactoryPreset("Clean Vocal");
+            auto stereo = sine(220.0, 0.2f, 48000 * 3);
+            stereo.applyGain(1, 0, stereo.getNumSamples(), 0.01f);
+            processSignal(*q, stereo);
+            expectEquals(q->getMirroredChannel(), -1);
+        }
+
+        beginTest("A damaged or hand-edited preset can't break the sound (garbage values in every setting)");
+        {
+            for (const char* garbage : {"nan", "inf", "-inf", "1e30", "-1e30", "abc", ""})
+            {
+                auto p = makeProcessor();
+                auto xml = p->createPresetXml("Broken");
+                int changed = 0;
+                if (auto* params = xml->getChildByName("PARAMS"))
+                    for (auto* e : params->getChildIterator())
+                        if (e->hasAttribute("value"))
+                        {
+                            e->setAttribute("value", garbage);
+                            ++changed;
+                        }
+                expectGreaterThan(changed, 50);
+                p->applyPresetXml(*xml);
+                bool sane = true;
+                for (auto* param : p->getParameters().processor.getParameters())
+                    if (auto* r = dynamic_cast<juce::RangedAudioParameter*>(param))
+                    {
+                        const float v = r->convertFrom0to1(r->getValue());
+                        const auto range = r->getNormalisableRange();
+                        sane = sane && std::isfinite(v) && v >= range.start && v <= range.end;
+                    }
+                expect(sane, juce::String("every setting stays inside its range after \"") + garbage + "\"");
+                auto voice = sine(220.0, 0.2f, 96000);
+                processSignal(*p, voice);
+                bool finite = true;
+                for (int i = 0; i < voice.getNumSamples(); ++i)
+                    finite = finite && std::isfinite(voice.getSample(0, i));
+                expect(finite, juce::String("output stays a number after \"") + garbage + "\"");
+                // (every setting at its minimum means both gains at -24 dB: quiet, but there)
+                expectGreaterThan(voice.getRMSLevel(0, 48000, 48000), 0.0001f, juce::String("the voice still comes through after \"") + garbage + "\"");
+            }
+        }
+
+        beginTest("Output never passes 0 dBFS, even with Output +24 dB and the Limiter off");
+        {
+            auto p = makeProcessor();
+            p->getPresetManager().loadFactoryPreset("Karaoke Star");
+            setParam(*p, pid::limOn, 0.0f);
+            setParam(*p, pid::outGain, 24.0f);
+            p->getChain().requestSnap();
+            auto loud = sine(220.0, 0.5f, 48000);
+            processSignal(*p, loud);
+            expectLessOrEqual(loud.getMagnitude(0, loud.getNumSamples()), 1.0f);
+
+            // The guards themselves, fed bad values directly (NaN hides from max() and abs()).
+            const float nan = std::numeric_limits<float>::quiet_NaN(), inf = std::numeric_limits<float>::infinity();
+            expect(!dsp::isNumber(nan) && !dsp::isNumber(inf) && !dsp::isNumber(-inf) && dsp::isNumber(0.0f) && dsp::isNumber(-1.0e30f));
+            float left[4] = {0.1f, nan, -inf, 0.2f}, right[4] = {inf, 0.3f, 0.0f, nan};
+            float* bad[2] = {left, right};
+            float envelope = 0.0f;
+            expect(!dsp::safetyLimit(bad, 2, 4, envelope, 0.999f), "notices NaN and infinity coming out of the chain");
+            expectEquals(dsp::scrubNonFinite(bad, 2, 4), 4);
+            expect(dsp::safetyLimit(bad, 2, 4, envelope, 0.999f) && left[0] == 0.1f && right[1] == 0.3f, "clean audio is left alone");
         }
 
         beginTest("Harshness tamer: dips 2-5 kHz only when a belted note gets harsh");
@@ -1100,6 +1208,65 @@ private:
                 logMessage("sung " + juce::String(f0) + " Hz: biggest level change " + juce::String(worst, 3) + " dB");
                 expectLessThan(worst, 0.1f, "sung notes untouched");
             }
+        }
+
+        beginTest("Set up my voice silences a laptop fan between phrases (the Gate reacts to the noise's peaks)");
+        {
+            // Fan: rumbly noise at about -48 dBFS RMS (its peaks reach about -36). Voice: syllables at about -28 dBFS.
+            juce::Random rng(11);
+            dsp::Biquad fanTone;
+            fanTone.c = dsp::biquad::lowpass(sr, 1500.0, 0.707);
+            auto fan = [&] { return fanTone.process((rng.nextFloat() * 2.0f - 1.0f) * 0.0105f, 0); };
+            auto mic = [&](double seconds, bool voice, double startT) {
+                juce::AudioBuffer<float> b(2, (int)(sr * seconds));
+                for (int i = 0; i < b.getNumSamples(); ++i)
+                {
+                    const double t = startT + i / sr;
+                    float x = fan();
+                    if (voice)
+                        x += (float)(0.06 * std::pow(std::sin(juce::MathConstants<double>::pi * 2.0 * t), 2.0)
+                                     * (std::sin(2.0 * juce::MathConstants<double>::pi * 220.0 * t)
+                                        + 0.5 * std::sin(2.0 * juce::MathConstants<double>::pi * 440.0 * t)));
+                    b.setSample(0, i, x);
+                    b.setSample(1, i, x);
+                }
+                return b;
+            };
+            auto fanAfter = [&](bool setUp) {
+                auto p = makeProcessor();
+                p->getPresetManager().loadFactoryPreset("Clean Vocal");
+                if (setUp)
+                {
+                    juce::AudioBuffer<float> m(2, (int)(sr * 11.5));
+                    auto quiet = mic(3.3, false, 0.0), voice = mic(8.2, true, 3.3);
+                    for (int c = 0; c < 2; ++c)
+                    {
+                        m.copyFrom(c, 0, quiet, c, 0, quiet.getNumSamples());
+                        m.copyFrom(c, quiet.getNumSamples(), voice, c, 0, voice.getNumSamples());
+                    }
+                    p->getVoiceAnalyzer().start();
+                    processSignal(*p, m);
+                    const auto r = VoiceAnalyzer::evaluate(p->getVoiceAnalyzer().getMeasurements());
+                    logMessage("fan " + juce::String(r.noiseDb, 1) + " dB (peaks " + juce::String(r.noisePeakDb, 1) + "), voice "
+                               + juce::String(r.voiceDb, 1) + " dB -> input " + juce::String(r.inputGainDb, 1) + " dB, gate "
+                               + juce::String(r.gateThresholdDb, 1) + " dB");
+                    p->applyVoiceSetup(r);
+                }
+                auto sing = mic(4.0, true, 0.0);
+                processSignal(*p, sing);
+                const float voiceRms = sing.getRMSLevel(0, (int)sr * 2, (int)sr * 2);
+                auto pause = mic(3.0, false, 0.0);
+                processSignal(*p, pause);
+                const float fanRms = pause.getRMSLevel(0, (int)sr, (int)sr * 2);
+                return std::pair<float, float>{juce::Decibels::gainToDecibels(voiceRms), juce::Decibels::gainToDecibels(fanRms)};
+            };
+            const auto [voiceBefore, fanBefore] = fanAfter(false);
+            const auto [voiceSetUp, fanSetUp] = fanAfter(true);
+            logMessage("fan between phrases: " + juce::String(fanBefore, 1) + " dB with defaults, " + juce::String(fanSetUp, 1)
+                       + " dB after Set up my voice; voice " + juce::String(voiceBefore, 1) + " / " + juce::String(voiceSetUp, 1) + " dB");
+            // Setup also raises a quiet mic (Input Gain), so compare the fan against the voice.
+            expectGreaterThan((voiceSetUp - fanSetUp) - (voiceBefore - fanBefore), 10.0f, "the fan is gated after setup");
+            expectGreaterThan(voiceSetUp, voiceBefore - 3.0f, "the voice is not cut");
         }
 
         beginTest("Set up my voice: measures room, level and \"s\" frequency, and survives preset changes");

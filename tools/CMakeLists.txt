@@ -10,3 +10,9 @@ list(TRANSFORM _shared PREPEND "${PROJECT_SOURCE_DIR}/")
 target_sources(stagemic_render PRIVATE ${_shared} RenderPresets.cpp)
 stagemic_configure_juce_target(stagemic_render)
 target_link_libraries(stagemic_render PRIVATE juce::juce_audio_formats)
+
+# stagemic_bench: CPU cost per preset and abuse tests, driven like OBS drives the filter.
+juce_add_console_app(stagemic_bench PRODUCT_NAME "stagemic_bench")
+target_sources(stagemic_bench PRIVATE ${_shared} StressBench.cpp)
+stagemic_configure_juce_target(stagemic_bench)
+target_link_libraries(stagemic_bench PRIVATE juce::juce_audio_formats)

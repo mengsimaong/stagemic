@@ -85,6 +85,14 @@ public:
     const Tune& getTune() const noexcept { return *tune; }
 
     bool isModuleActive(ModuleId id) const noexcept { return slots[(size_t)id].activeFlag.load(std::memory_order_relaxed); }
+    /** True if any module is running (or fading out), i.e. the chain may change the sound. */
+    bool anyModuleActive() const noexcept
+    {
+        for (const auto& slot : slots)
+            if (slot.activeFlag.load(std::memory_order_relaxed))
+                return true;
+        return false;
+    }
 
 private:
     struct Slot

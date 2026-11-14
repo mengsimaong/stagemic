@@ -202,15 +202,22 @@ MeterBar::MeterBar(juce::String text)
 
 void MeterBar::setLevel(float peak)
 {
-    level = juce::jmax(peak, level * 0.9f); // ~27 dB/s fall at 30 fps
+    level = juce::jmax(peak, level * 0.85f); // ~28 dB/s fall at 20 fps
     if (peak >= hold)
     {
         hold = peak;
-        holdTicks = 45;
+        holdTicks = 30; // 1.5 s at 20 updates a second
     }
     else if (--holdTicks <= 0)
         hold = juce::jmax(level, hold * 0.92f);
-    repaint();
+    // Only redraw when the bar visibly moves (about 0.25 dB), not every frame in silence.
+    auto toDb = [](float v) { return juce::Decibels::gainToDecibels(v, -60.0f); };
+    if (std::abs(toDb(level) - toDb(paintedLevel)) > 0.25f || std::abs(toDb(hold) - toDb(paintedHold)) > 0.25f)
+    {
+        paintedLevel = level;
+        paintedHold = hold;
+        repaint();
+    }
 }
 
 void MeterBar::paint(juce::Graphics& g)

@@ -48,7 +48,7 @@ StageMicEditor::StageMicEditor(StageMicProcessor& p)
         content.addAndMakeVisible(c);
     content.addChildComponent(simple);
     content.addAndMakeVisible(cat);
-    content.addAndMakeVisible(flash);
+    content.addChildComponent(flash);
     presetBar.onModeChanged = [this](bool advanced) {
         processor.setAdvancedMode(advanced);
         applyMode(advanced);
@@ -92,10 +92,21 @@ StageMicEditor::StageMicEditor(StageMicProcessor& p)
 
     setResizable(true, true);
     getConstrainer()->setFixedAspectRatio((double)designWidth / designHeight);
-    setResizeLimits(designWidth * 7 / 10, designHeight * 7 / 10, designWidth * 2, designHeight * 2);
+    setResizeLimits(designWidth * 6 / 10, designHeight * 6 / 10, designWidth * 2, designHeight * 2);
     applyMode(processor.isAdvancedMode());
-    setSize(designWidth, designHeight);
-    startTimerHz(30);
+    // The size they chose last time (the window then makes sure it fits the screen).
+    const int width = processor.getEditorWidth() > 0 ? juce::jlimit(designWidth * 6 / 10, designWidth * 2, processor.getEditorWidth()) : designWidth;
+    setSize(width, juce::roundToInt(width * (double)designHeight / designWidth));
+    sizeRestored = true;
+
+    // First time ever: start with "Set up my voice" (it fixes the gate for noisy
+    // rooms and laptop fans, and the input level). Shown once; Cancel skips it.
+    if (!processor.hasVoiceSetup() && !processor.wasVoiceSetupOffered())
+    {
+        processor.setVoiceSetupOffered();
+        voiceSetup.openWelcome();
+    }
+    startTimerHz(StageMicEditor::refreshRateHz);
 }
 
 StageMicEditor::~StageMicEditor()
@@ -113,6 +124,8 @@ void StageMicEditor::resized()
 {
     const float scale = (float)getWidth() / (float)designWidth;
     content.setTransform(juce::AffineTransform::scale(scale));
+    if (sizeRestored)
+        processor.setEditorWidth(getWidth());
 }
 
 void StageMicEditor::applyMode(bool advanced)
@@ -121,6 +134,7 @@ void StageMicEditor::applyMode(bool advanced)
     for (auto* c : std::initializer_list<juce::Component*>{&chainBar, &display, &gate, &deEsser, &compressor, &color, &space, &limiter})
         c->setVisible(advanced);
     simple.setVisible(!advanced);
+    display.setLive(advanced);
     // Simple mode has no chain bar: the meters start right under the header.
     const int top = advanced ? 88 : 56;
     master.setBounds(master.getX(), top, master.getWidth(), bodyBottom - top);
@@ -155,7 +169,15 @@ void StageMicEditor::refreshFromProcessor(bool evenIfHidden)
     const auto inPeak = processor.getInputMeter().takePeak();
     const auto outPeak = processor.getOutputMeter().takePeak();
 
-    if (!isShowing() && !evenIfHidden)
+    // Window closed or minimised: stop the spectrum's audio tap too, so a hidden
+    // window costs the audio thread nothing.
+    const bool showing = isShowing() || evenIfHidden;
+    if (showing != wasShowing)
+    {
+        wasShowing = showing;
+        display.setLive(showing && processor.isAdvancedMode());
+    }
+    if (!showing)
         return;
 
     if (voiceSetup.isVisible())

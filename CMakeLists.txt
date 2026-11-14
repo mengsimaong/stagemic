@@ -67,6 +67,7 @@ set(
   src/core/Parameters.cpp
   src/core/Parameters.h
   src/core/dsp/DspUtils.h
+  src/core/dsp/Safety.h
   src/core/dsp/Module.h
   src/core/dsp/Dynamics.cpp
   src/core/dsp/Dynamics.h

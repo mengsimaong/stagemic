@@ -111,8 +111,16 @@ juce::String ChainBar::getTooltip()
 
 void ChainBar::setActivity(const dsp::VocalChain::Activity& a)
 {
+    std::array<float, kNumModules> before{};
+    for (int i = 0; i < kNumModules; ++i)
+        before[(size_t)i] = activityOf((ModuleId)i);
     activity = a;
-    repaint(chipArea);
+    for (int i = 0; i < kNumModules; ++i)
+        if (std::abs(activityOf((ModuleId)i) - before[(size_t)i]) > 0.02f)
+        {
+            repaint(chipArea); // only when a bar visibly moves
+            return;
+        }
 }
 
 float ChainBar::activityOf(ModuleId id) const
