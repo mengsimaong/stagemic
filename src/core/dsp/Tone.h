@@ -34,17 +34,27 @@ private:
         LowCut,
         LowCut2, // second stage for the 24 dB/oct slope (pass-through at 12 dB/oct)
         LowShelf,
+        LoMid, // extra bell; skipped entirely while its gain is 0 dB
         Mid,
+        HiMid, // extra bell; skipped entirely while its gain is 0 dB
         High,
         NumBands
     };
 
     std::atomic<float>*lowCut, *lowCutSlope, *lowFreq, *lowGain, *midFreq, *midGain, *midQ, *highFreq, *highGain;
+    std::atomic<float>*loMidFreq, *loMidGain, *loMidQ, *hiMidFreq, *hiMidGain, *hiMidQ;
     std::atomic<float>*tameFreq, *tameThreshold, *tameRange, *plosive;
     int slope = -1;
     double sr = 48000.0;
     BlockSmoothed sLowCut, sLowFreq, sLowGain, sMidFreq, sMidGain, sMidQ, sHighFreq, sHighGain, sTameFreq;
+    BlockSmoothed sLoMidFreq, sLoMidGain, sLoMidQ, sHiMidFreq, sHiMidGain, sHiMidQ;
+    bool bandIdle[NumBands]{}; // an extra bell at exactly 0 dB: not run at all
     Biquad filters[NumBands];
+    // While a setting moves, each filter glides to its new shape sample by sample
+    // instead of jumping once per block (which is heard as a faint crackle).
+    BiquadCoeffs glideTo[NumBands];
+    bool gliding[NumBands]{};
+    void setBand(Band band, const BiquadCoeffs& coeffs, bool snap) noexcept;
 
     // Harshness tamer: y = x + (g - 1) * band(x), with g following how far the
     // band sticks out above the body of the voice (so it's level-independent).

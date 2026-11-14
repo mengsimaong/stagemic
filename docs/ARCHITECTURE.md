@@ -109,7 +109,7 @@ a whole when resized:
 * `PresetBar`: preset browser (previous/next, drop-down), Save, and a menu with
   Save As / Import / Export / Delete / Open Preset Folder.
 * `DisplayPanel`: EQ and Multiband tabs, each with its own power switch. The EQ
-  has four draggable points (the curve is computed from the same filter maths
+  has seven draggable points (the curve is computed from the same filter maths
   the audio uses). The Multiband view has draggable band splits and thresholds
   with live gain reduction. A live output spectrum sits behind both.
   `SpectrumTap` hands audio to the analyzer lock-free, and only while the

@@ -43,9 +43,10 @@ void PowerButton::paintButton(juce::Graphics& g, bool over, bool)
     const auto r = getLocalBounds().toFloat().reduced(2.0f).withSizeKeepingCentre(14.0f, 14.0f);
     if (getToggleState())
     {
-        g.setColour(theme::accent.withAlpha(0.25f));
+        const auto tint = theme::tintOf(*this);
+        g.setColour(tint.withAlpha(0.25f));
         g.fillRoundedRectangle(r.expanded(2.5f), 4.0f);
-        g.setColour(theme::accent);
+        g.setColour(tint);
         g.fillRoundedRectangle(r, 3.0f);
         g.setColour(juce::Colours::white.withAlpha(0.35f));
         g.fillRoundedRectangle(r.reduced(3.5f).withHeight(2.5f), 1.0f);
@@ -121,9 +122,10 @@ void ValueKnob::refreshText()
 
 void ValueKnob::resized()
 {
+    // Same order everywhere: name, knob, value.
     auto area = getLocalBounds();
-    valueText.setBounds(area.removeFromTop(17));
-    label.setBounds(area.removeFromBottom(14));
+    label.setBounds(area.removeFromTop(15));
+    valueText.setBounds(area.removeFromBottom(17));
     const int size = juce::jmin(area.getWidth(), area.getHeight());
     slider.setBounds(area.withSizeKeepingCentre(size, size));
 }
@@ -169,7 +171,7 @@ void ChoiceToggle::refresh()
 void ChoiceToggle::resized()
 {
     auto area = getLocalBounds();
-    label.setBounds(area.removeFromBottom(14));
+    label.setBounds(area.removeFromTop(15)); // name on top, like the knobs
     button.setBounds(area.withSizeKeepingCentre(juce::jmin(area.getWidth(), 120), 24));
 }
 
@@ -214,10 +216,40 @@ void MeterBar::setLevel(float peak)
     auto toDb = [](float v) { return juce::Decibels::gainToDecibels(v, -60.0f); };
     if (std::abs(toDb(level) - toDb(paintedLevel)) > 0.25f || std::abs(toDb(hold) - toDb(paintedHold)) > 0.25f)
     {
+        // Redraw only the slice between the old and the new level, and the two
+        // places of the peak line: a few pixels instead of the whole bar.
+        const auto area = barArea();
+        auto slice = [&](float a, float b) {
+            const float top = juce::jmin(a, b) - 3.0f, bottom = juce::jmax(a, b) + 3.0f;
+            repaint(juce::Rectangle<float>(area.getX(), top, area.getWidth(), bottom - top).getSmallestIntegerContainer());
+        };
+        if (paintedLevel < 0.0f)
+            repaint();
+        else
+        {
+            slice(yFor(paintedLevel), yFor(level));
+            slice(yFor(paintedHold), yFor(paintedHold));
+            slice(yFor(hold), yFor(hold));
+        }
         paintedLevel = level;
         paintedHold = hold;
-        repaint();
     }
+}
+
+juce::Rectangle<float> MeterBar::barArea() const
+{
+    auto area = getLocalBounds().toFloat();
+    if (label.isNotEmpty())
+        area.removeFromBottom(16.0f);
+    return area;
+}
+
+float MeterBar::yFor(float linear) const
+{
+    constexpr float minDb = -60.0f;
+    const auto area = barArea();
+    const float db = juce::Decibels::gainToDecibels(linear, minDb);
+    return area.getBottom() - area.getHeight() * juce::jlimit(0.0f, 1.0f, (db - minDb) / -minDb);
 }
 
 void MeterBar::paint(juce::Graphics& g)
@@ -290,6 +322,7 @@ Section::Section(APVTS& state, const char* enableParam, juce::String t, Header h
     , headerStyle(h)
     , attachment(state, enableParam, power)
 {
+    theme::setTint(*this, theme::familyOfEnableParam(enableParam));
     power.setTooltip("Switch " + title + " on or off");
     power.onStateChange = [this] {
         const bool on = isOn();

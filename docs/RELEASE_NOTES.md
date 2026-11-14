@@ -8,7 +8,27 @@
 
 Updating from an earlier version: just run the new installer. Your filter, its settings and your presets stay.
 
-## New in 0.4.1
+## New in 0.4.2
+
+* **New look:** each module family has its own colour (the same as its chip in the chain bar), pink is
+  kept for the brand and the main actions; every control reads name, knob, value; Simple mode is three
+  even rows.
+* **Simple mode's window is lighter:** the Tune graph draws nothing while Tune is off and about a third
+  as much while it is on, and the level meters redraw only the part that moved. Nothing in the sound
+  engine is slower than 0.4.1 (measured side by side, every module and preset).
+* **EQ: seven points.** Two new bell bands, Low Mid and High Mid (each with frequency, gain and
+  width), for detailed work. They start at 0 dB, where they are not in the sound at all, so every
+  existing preset and saved setup sounds exactly as before. Under the graph there is now one chip per
+  point showing where it sits; click a chip, or grab the point on the graph, to get its knobs.
+  The Tame point is now number 7.
+* **EQ graph fixes:**
+  * Where two points sit on the same spot (point 2 starts on the same line as point 1), you now grab
+    the point you see on top - the one you used last - instead of the one underneath.
+  * The curve now shows the low cut's real steepness (it always drew 12 dB/oct, even at 24 dB/oct).
+  * Dragging points or knobs quickly no longer makes a faint crackle: the filters glide to their new
+    shape instead of jumping.
+
+## From 0.4.1
 
 * **The window fits small laptop screens** (1366 x 768, or 1080p at 125-150% scaling): it opens shrunk
   to fit, on the screen you're using, and remembers the size you choose.

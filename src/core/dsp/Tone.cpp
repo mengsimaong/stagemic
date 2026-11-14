@@ -18,6 +18,12 @@ Equalizer::Equalizer(juce::AudioProcessorValueTreeState& s)
     , midQ(param(s, pid::eqMidQ))
     , highFreq(param(s, pid::eqHighFreq))
     , highGain(param(s, pid::eqHighGain))
+    , loMidFreq(param(s, pid::eqLoMidFreq))
+    , loMidGain(param(s, pid::eqLoMidGain))
+    , loMidQ(param(s, pid::eqLoMidQ))
+    , hiMidFreq(param(s, pid::eqHiMidFreq))
+    , hiMidGain(param(s, pid::eqHiMidGain))
+    , hiMidQ(param(s, pid::eqHiMidQ))
     , tameFreq(param(s, pid::eqTameFreq))
     , tameThreshold(param(s, pid::eqTameThreshold))
     , tameRange(param(s, pid::eqTameRange))
@@ -64,6 +70,20 @@ void Equalizer::reset() noexcept
     popMeter.store(0.0f, std::memory_order_relaxed);
 }
 
+void Equalizer::setBand(Band band, const BiquadCoeffs& coeffs, bool snap) noexcept
+{
+    if (snap)
+    {
+        filters[band].c = coeffs;
+        gliding[band] = false;
+    }
+    else
+    {
+        glideTo[band] = coeffs;
+        gliding[band] = true;
+    }
+}
+
 void Equalizer::update(bool snap) noexcept
 {
     const int newSlope = load(lowCutSlope) >= 0.5f ? 24 : 12;
@@ -73,31 +93,46 @@ void Equalizer::update(bool snap) noexcept
         if (slope == 24)
         {
             // 4th-order Butterworth: two biquads with these Qs.
-            filters[LowCut].c = biquad::highpass(sr, sLowCut.current, 0.54119610);
-            filters[LowCut2].c = biquad::highpass(sr, sLowCut.current, 1.30656296);
+            setBand(LowCut, biquad::highpass(sr, sLowCut.current, 0.54119610), snap);
+            setBand(LowCut2, biquad::highpass(sr, sLowCut.current, 1.30656296), snap);
         }
         else
         {
-            filters[LowCut].c = biquad::highpass(sr, sLowCut.current, 0.70710678);
-            filters[LowCut2].c = BiquadCoeffs{}; // pass-through
+            setBand(LowCut, biquad::highpass(sr, sLowCut.current, 0.70710678), snap);
+            setBand(LowCut2, BiquadCoeffs{}, snap); // pass-through
         }
     }
 
     const bool lf = sLowFreq.step(load(lowFreq), snap);
     const bool lg = sLowGain.step(load(lowGain), snap);
     if (lf || lg || snap)
-        filters[LowShelf].c = biquad::lowShelf(sr, sLowFreq.current, sLowGain.current);
+        setBand(LowShelf, biquad::lowShelf(sr, sLowFreq.current, sLowGain.current), snap);
 
     const bool mf = sMidFreq.step(load(midFreq), snap);
     const bool mg = sMidGain.step(load(midGain), snap);
     const bool mq = sMidQ.step(load(midQ), snap);
     if (mf || mg || mq || snap)
-        filters[Mid].c = biquad::peak(sr, sMidFreq.current, std::max(0.1f, sMidQ.current), sMidGain.current);
+        setBand(Mid, biquad::peak(sr, sMidFreq.current, std::max(0.1f, sMidQ.current), sMidGain.current), snap);
+
+    // The two extra bells. At exactly 0 dB (and settled) a bell is left out of the
+    // signal path, so setups that don't use it sound and cost exactly as before.
+    auto extraBell = [&](Band band, BlockSmoothed& f, BlockSmoothed& g, BlockSmoothed& q, std::atomic<float>* fp, std::atomic<float>* gp,
+                         std::atomic<float>* qp) {
+        const bool cf = f.step(load(fp), snap), cg = g.step(load(gp), snap), cq = q.step(load(qp), snap);
+        if (cf || cg || cq || snap)
+            setBand(band, biquad::peak(sr, f.current, std::max(0.1f, q.current), g.current), snap);
+        const bool idle = g.current == 0.0f && g.target == 0.0f && !gliding[band];
+        if (idle && !bandIdle[band])
+            filters[band].reset(); // start clean when it is used again
+        bandIdle[band] = idle;
+    };
+    extraBell(LoMid, sLoMidFreq, sLoMidGain, sLoMidQ, loMidFreq, loMidGain, loMidQ);
+    extraBell(HiMid, sHiMidFreq, sHiMidGain, sHiMidQ, hiMidFreq, hiMidGain, hiMidQ);
 
     const bool hf = sHighFreq.step(load(highFreq), snap);
     const bool hg = sHighGain.step(load(highGain), snap);
     if (hf || hg || snap)
-        filters[High].c = biquad::highShelf(sr, sHighFreq.current, sHighGain.current);
+        setBand(High, biquad::highShelf(sr, sHighFreq.current, sHighGain.current), snap);
 
     if (sTameFreq.step(load(tameFreq), snap) || snap)
         tameBand.c = biquad::bandPass(sr, sTameFreq.current, 1.2);
@@ -115,16 +150,108 @@ void Equalizer::process(float* const* ch, int numChannels, int n) noexcept
     else
         popMeter.store(0.0f, std::memory_order_relaxed);
 
-    for (int c = 0; c < numChannels; ++c)
+    // Steady state (nothing moving): all bands in one pass per channel, with their
+    // coefficients and states in locals so the whole cascade runs in registers.
+    bool anyGliding = false;
+    for (int band = 0; band < NumBands; ++band)
+        anyGliding = anyGliding || (gliding[band] && !bandIdle[band]);
+    if (!anyGliding)
     {
-        float* x = ch[c];
-        for (int i = 0; i < n; ++i)
+        int active[NumBands];
+        int count = 0;
+        BiquadCoeffs k[NumBands];
+        for (int band = 0; band < NumBands; ++band)
+            if (!bandIdle[band])
+            {
+                active[count] = band;
+                k[count++] = filters[band].c;
+            }
+        for (int c = 0; c < numChannels; ++c)
         {
-            float v = x[i];
-            for (auto& f : filters)
-                v = f.process(v, c);
-            x[i] = v;
+            float s1[NumBands], s2[NumBands];
+            for (int j = 0; j < count; ++j)
+            {
+                s1[j] = filters[active[j]].s1[c];
+                s2[j] = filters[active[j]].s2[c];
+            }
+            float* x = ch[c];
+            for (int i = 0; i < n; ++i)
+            {
+                float v = x[i];
+                for (int j = 0; j < count; ++j)
+                {
+                    const float y = k[j].b0 * v + s1[j];
+                    s1[j] = k[j].b1 * v - k[j].a1 * y + s2[j];
+                    s2[j] = k[j].b2 * v - k[j].a2 * y;
+                    v = y;
+                }
+                x[i] = v;
+            }
+            for (int j = 0; j < count; ++j)
+            {
+                filters[active[j]].s1[c] = s1[j];
+                filters[active[j]].s2[c] = s2[j];
+            }
         }
+    }
+
+    // A setting is moving: band by band, gliding the ones that changed.
+    for (int band = 0; anyGliding && band < NumBands; ++band)
+    {
+        auto& f = filters[band];
+        if (bandIdle[band])
+            continue;
+        if (!gliding[band])
+        {
+            // Coefficients and state in locals, so the loop runs in registers.
+            const BiquadCoeffs k = f.c;
+            for (int c = 0; c < numChannels; ++c)
+            {
+                float* x = ch[c];
+                float s1 = f.s1[c], s2 = f.s2[c];
+                for (int i = 0; i < n; ++i)
+                {
+                    const float in = x[i];
+                    const float y = k.b0 * in + s1;
+                    s1 = k.b1 * in - k.a1 * y + s2;
+                    s2 = k.b2 * in - k.a2 * y;
+                    x[i] = y;
+                }
+                f.s1[c] = s1;
+                f.s2[c] = s2;
+            }
+            continue;
+        }
+
+        // Glide: a straight line from the current shape to the new one across this
+        // block (both are stable filters, and so is every shape in between).
+        const auto& to = glideTo[band];
+        const float inv = 1.0f / (float)n;
+        const BiquadCoeffs d{(to.b0 - f.c.b0) * inv, (to.b1 - f.c.b1) * inv, (to.b2 - f.c.b2) * inv, (to.a1 - f.c.a1) * inv,
+                             (to.a2 - f.c.a2) * inv};
+        for (int c = 0; c < numChannels; ++c)
+        {
+            float* x = ch[c];
+            BiquadCoeffs k = f.c;
+            float s1 = f.s1[c], s2 = f.s2[c];
+            for (int i = 0; i < n; ++i)
+            {
+                k.b0 += d.b0;
+                k.b1 += d.b1;
+                k.b2 += d.b2;
+                k.a1 += d.a1;
+                k.a2 += d.a2;
+                const float in = x[i];
+                const float y = k.b0 * in + s1;
+                s1 = k.b1 * in - k.a1 * y + s2;
+                s2 = k.b2 * in - k.a2 * y;
+                x[i] = y;
+            }
+            f.s1[c] = s1;
+            f.s2[c] = s2;
+        }
+        f.c = to;
+        gliding[band] = false;
     }
 
     if (tameMaxCutDb > 0.0f || tameGr.state < -0.01f)

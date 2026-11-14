@@ -167,13 +167,21 @@ EqDisplay::EqDisplay(APVTS& s, SpectrumAnalyzer& a, std::function<double()> sr)
     , state(s)
     , sampleRate(std::move(sr))
     , nodes{{{"Low Cut", pid::eqLowCut, nullptr, nullptr},
-             {"Low", pid::eqLowFreq, pid::eqLowGain, nullptr},
+             {"Low Shelf", pid::eqLowFreq, pid::eqLowGain, nullptr},
+             {"Low Mid", pid::eqLoMidFreq, pid::eqLoMidGain, pid::eqLoMidQ},
              {"Mid", pid::eqMidFreq, pid::eqMidGain, pid::eqMidQ},
+             {"High Mid", pid::eqHiMidFreq, pid::eqHiMidGain, pid::eqHiMidQ},
              {"Air", pid::eqHighFreq, pid::eqHighGain, nullptr},
              {"Tame", pid::eqTameFreq, pid::eqTameRange, nullptr, true}}}
 {
-    setTooltip("Drag a point to shape the EQ. Mouse wheel on Mid changes its width. Double-click a point to reset it.\n"
-               "Point 5 (Tame) only cuts while the voice gets harsh: drag it down to allow more cut.");
+    setTooltip("Drag a point to shape the EQ. Mouse wheel on points 3, 4 and 5 changes their width. Double-click a point to reset it.\n"
+               "Point 7 (Tame) only cuts while the voice gets harsh: drag it down to allow more cut.");
+}
+
+void EqDisplay::setSelected(int index)
+{
+    lastUsed = juce::jlimit(0, numNodes - 1, index);
+    repaint();
 }
 
 float EqDisplay::value(const char* id) const
@@ -208,15 +216,22 @@ juce::Point<float> EqDisplay::nodePosition(int i) const
 
 int EqDisplay::nodeAt(juce::Point<float> p) const
 {
+    // The nearest point within reach. Where points overlap (within a few pixels of
+    // equally near), take the one drawn on top: the point used last, else the higher number.
+    constexpr float reach = 14.0f, tie = 5.0f;
     int best = -1;
-    float bestDist = 14.0f;
+    float bestDist = reach;
     for (int i = 0; i < (int)nodes.size(); ++i)
     {
         const float d = nodePosition(i).getDistanceFrom(p);
-        if (d < bestDist)
+        if (d >= reach)
+            continue;
+        const bool nearer = d < bestDist - tie;
+        const bool sameSpot = best >= 0 && std::abs(d - bestDist) <= tie;
+        if (best < 0 || nearer || (sameSpot && best != lastUsed))
         {
-            bestDist = d;
             best = i;
+            bestDist = d;
         }
     }
     return best;
@@ -225,10 +240,19 @@ int EqDisplay::nodeAt(juce::Point<float> p) const
 float EqDisplay::responseDb(float freq) const
 {
     const double sr = sampleRate ? juce::jmax(8000.0, sampleRate()) : 48000.0;
-    float db = biquadMagnitudeDb(dsp::biquad::highpass(sr, value(pid::eqLowCut), 0.70710678), freq, sr);
+    // The low cut exactly as the EQ builds it: 12 dB/oct, or 24 dB/oct as two stages.
+    float db;
+    if (value(pid::eqLowCutSlope) >= 0.5f)
+        db = biquadMagnitudeDb(dsp::biquad::highpass(sr, value(pid::eqLowCut), 0.54119610), freq, sr)
+             + biquadMagnitudeDb(dsp::biquad::highpass(sr, value(pid::eqLowCut), 1.30656296), freq, sr);
+    else
+        db = biquadMagnitudeDb(dsp::biquad::highpass(sr, value(pid::eqLowCut), 0.70710678), freq, sr);
     db += biquadMagnitudeDb(dsp::biquad::lowShelf(sr, value(pid::eqLowFreq), value(pid::eqLowGain)), freq, sr);
     db += biquadMagnitudeDb(dsp::biquad::peak(sr, value(pid::eqMidFreq), juce::jmax(0.1f, value(pid::eqMidQ)), value(pid::eqMidGain)), freq, sr);
     db += biquadMagnitudeDb(dsp::biquad::highShelf(sr, value(pid::eqHighFreq), value(pid::eqHighGain)), freq, sr);
+    for (const auto& [f, g, q] : {std::tuple{pid::eqLoMidFreq, pid::eqLoMidGain, pid::eqLoMidQ}, std::tuple{pid::eqHiMidFreq, pid::eqHiMidGain, pid::eqHiMidQ}})
+        if (value(g) != 0.0f)
+            db += biquadMagnitudeDb(dsp::biquad::peak(sr, value(f), juce::jmax(0.1f, value(q)), value(g)), freq, sr);
     if (tameCutDb > 0.05f && value(pid::eqTameRange) > 0.0f)
         db += biquadMagnitudeDb(dsp::biquad::peak(sr, value(pid::eqTameFreq), 1.2, -tameCutDb), freq, sr);
     return db;
@@ -263,7 +287,7 @@ void EqDisplay::paint(juce::Graphics& g)
         else
             curve.lineTo(x, y);
     }
-    const auto curveColour = on ? theme::accent : theme::faintText;
+    const auto curveColour = on ? theme::family(ModuleId::Equalizer) : theme::faintText;
     juce::Path fill(curve);
     fill.lineTo(a.getRight(), gainToY(0.0f));
     fill.lineTo(a.getX(), gainToY(0.0f));
@@ -273,15 +297,24 @@ void EqDisplay::paint(juce::Graphics& g)
     g.setColour(curveColour);
     g.strokePath(curve, juce::PathStrokeType(2.2f));
 
-    // Points
-    for (int i = 0; i < (int)nodes.size(); ++i)
+    // Points, in number order, with the one used last on top (so overlapping points
+    // show the one a click will grab).
+    for (int k = 0; k < (int)nodes.size(); ++k)
     {
+        const int top = lastUsed >= 0 ? lastUsed : (int)nodes.size() - 1;
+        const int i = k == (int)nodes.size() - 1 ? top : (k < top ? k : k + 1);
         const auto p = nodePosition(i);
         const bool active = i == hovered || i == dragging;
         if (active)
         {
             g.setColour(curveColour.withAlpha(0.25f));
             g.fillEllipse(juce::Rectangle<float>(26.0f, 26.0f).withCentre(p));
+        }
+        else if (i == lastUsed)
+        {
+            // The selected point (its knobs are shown below).
+            g.setColour(curveColour.withAlpha(0.5f));
+            g.drawEllipse(juce::Rectangle<float>(21.0f, 21.0f).withCentre(p), 1.2f);
         }
         const bool tame = nodes[(size_t)i].tame;
         const auto pointColour = tame ? (on && value(pid::eqTameRange) > 0.0f ? theme::reduction : theme::faintText) : curveColour;
@@ -360,7 +393,12 @@ void EqDisplay::mouseDown(const juce::MouseEvent& e)
 {
     dragging = nodeAt(e.position);
     if (dragging >= 0)
+    {
+        lastUsed = dragging;
         beginGesture(dragging);
+        if (onSelect)
+            onSelect(dragging);
+    }
 }
 
 void EqDisplay::mouseDrag(const juce::MouseEvent& e)
@@ -492,7 +530,7 @@ void MultibandDisplay::paint(juce::Graphics& g)
 
     static const char* names[] = {"LOW", "MID", "HIGH"};
     const char* thresholdIds[] = {pid::mbLowThreshold, pid::mbMidThreshold, pid::mbHighThreshold};
-    const auto colour = on ? theme::accent : theme::faintText;
+    const auto colour = on ? theme::family(ModuleId::Multiband) : theme::faintText;
 
     for (int b = 0; b < 3; ++b)
     {
@@ -631,7 +669,7 @@ void FieldRow::paint(juce::Graphics& g)
         if (groups[i].badge.isNotEmpty())
         {
             const auto badge = title.removeFromLeft(15.0f).withSizeKeepingCentre(15.0f, 15.0f);
-            g.setColour(theme::accent);
+            g.setColour(theme::tintOf(*this));
             g.drawEllipse(badge.reduced(0.75f), 1.5f);
             g.setColour(theme::text);
             g.setFont(theme::font(10.0f, true));
@@ -645,11 +683,170 @@ void FieldRow::paint(juce::Graphics& g)
 }
 
 //==============================================================================
+EqBandBar::EqBandBar(APVTS& s)
+    : state(s)
+    , bands{{"Low Cut", pid::eqLowCut, nullptr, false},      {"Low Shelf", pid::eqLowFreq, pid::eqLowGain, false},
+            {"Low Mid", pid::eqLoMidFreq, pid::eqLoMidGain, false}, {"Mid", pid::eqMidFreq, pid::eqMidGain, false},
+            {"High Mid", pid::eqHiMidFreq, pid::eqHiMidGain, false}, {"Air", pid::eqHighFreq, pid::eqHighGain, false},
+            {"Tame", pid::eqTameFreq, pid::eqTameRange, true}}
+{
+    using Fields = std::vector<std::pair<const char*, juce::String>>;
+    const std::vector<Fields> fields = {{{pid::eqLowCut, "Freq"}, {pid::eqLowCutSlope, "Slope"}, {pid::eqPlosive, "Pops"}},
+                                        {{pid::eqLowFreq, "Freq"}, {pid::eqLowGain, "Gain"}},
+                                        {{pid::eqLoMidFreq, "Freq"}, {pid::eqLoMidGain, "Gain"}, {pid::eqLoMidQ, "Q"}},
+                                        {{pid::eqMidFreq, "Freq"}, {pid::eqMidGain, "Gain"}, {pid::eqMidQ, "Q"}},
+                                        {{pid::eqHiMidFreq, "Freq"}, {pid::eqHiMidGain, "Gain"}, {pid::eqHiMidQ, "Q"}},
+                                        {{pid::eqHighFreq, "Freq"}, {pid::eqHighGain, "Gain"}},
+                                        {{pid::eqTameFreq, "Freq"}, {pid::eqTameThreshold, "Thresh"}, {pid::eqTameRange, "Max Cut"}}};
+    for (size_t i = 0; i < bands.size(); ++i)
+    {
+        rows.push_back(std::make_unique<FieldRow>(s, std::vector<FieldRow::Group>{{juce::String((int)i + 1), bands[i].name, fields[i]}}));
+        addChildComponent(*rows.back());
+    }
+    setTooltip("Click a point's chip (or the point on the graph) to show its knobs.");
+    select(selected);
+}
+
+void EqBandBar::select(int index)
+{
+    selected = juce::jlimit(0, (int)bands.size() - 1, index);
+    for (size_t i = 0; i < rows.size(); ++i)
+        rows[i]->setVisible((int)i == selected);
+    repaint();
+}
+
+juce::String EqBandBar::readOut(int index, int line) const
+{
+    const auto& b = bands[(size_t)index];
+    const char* id = line == 0 ? b.freqId : b.gainId;
+    if (id == nullptr)
+        return state.getRawParameterValue(pid::eqLowCutSlope)->load() >= 0.5f ? "24 dB/oct" : "12 dB/oct";
+    auto* p = state.getParameter(id);
+    auto text = p->getText(p->getValue(), 16);
+    if (b.tame && line == 1)
+    {
+        const float maxCut = state.getRawParameterValue(id)->load();
+        text = maxCut > 0.0f ? "cuts up to " + juce::String(maxCut, 1) + " dB" : juce::String("off");
+    }
+    return text;
+}
+
+void EqBandBar::refresh()
+{
+    // Compares the raw numbers (no text is built unless something moved).
+    for (int i = 0; i < (int)bands.size(); ++i)
+    {
+        const auto& b = bands[(size_t)i];
+        const float f = state.getRawParameterValue(b.freqId)->load();
+        const float g = state.getRawParameterValue(b.gainId != nullptr ? b.gainId : pid::eqLowCutSlope)->load();
+        if (f != shownFreq[(size_t)i] || g != shownGain[(size_t)i])
+        {
+            shownFreq[(size_t)i] = f;
+            shownGain[(size_t)i] = g;
+            if (i < (int)chips.size())
+                repaint(chips[(size_t)i]);
+        }
+    }
+}
+
+int EqBandBar::chipAt(juce::Point<int> p) const
+{
+    for (int i = 0; i < (int)chips.size(); ++i)
+        if (chips[(size_t)i].contains(p))
+            return i;
+    return -1;
+}
+
+void EqBandBar::mouseDown(const juce::MouseEvent& e)
+{
+    if (const int i = chipAt(e.getPosition()); i >= 0)
+    {
+        select(i);
+        if (onSelect)
+            onSelect(i);
+    }
+}
+
+void EqBandBar::mouseMove(const juce::MouseEvent& e)
+{
+    if (const int i = chipAt(e.getPosition()); i != hover)
+    {
+        hover = i;
+        setMouseCursor(i >= 0 ? juce::MouseCursor::PointingHandCursor : juce::MouseCursor::NormalCursor);
+        repaint();
+    }
+}
+
+void EqBandBar::mouseExit(const juce::MouseEvent&)
+{
+    hover = -1;
+    repaint();
+}
+
+void EqBandBar::resized()
+{
+    constexpr int gap = 4, knobsWidth = 262;
+    auto area = getLocalBounds();
+    const auto knobs = area.removeFromRight(knobsWidth);
+    for (auto& r : rows)
+        r->setBounds(knobs);
+    area.removeFromRight(8);
+    chips.clear();
+    const int n = (int)bands.size();
+    const int w = (area.getWidth() - gap * (n - 1)) / n;
+    for (int i = 0; i < n; ++i)
+    {
+        chips.push_back(area.removeFromLeft(w));
+        area.removeFromLeft(gap);
+    }
+}
+
+void EqBandBar::paint(juce::Graphics& g)
+{
+    const auto tint = theme::tintOf(*this);
+    for (int i = 0; i < (int)chips.size(); ++i)
+    {
+        const auto r = chips[(size_t)i].toFloat().reduced(0.5f);
+        const bool on = i == selected;
+        g.setColour(on ? theme::panelRaised : theme::panelRaised.withAlpha(i == hover ? 0.75f : 0.4f));
+        g.fillRoundedRectangle(r, 5.0f);
+        if (on)
+        {
+            g.setColour(tint.withAlpha(0.85f));
+            g.drawRoundedRectangle(r, 5.0f, 1.2f);
+        }
+
+        auto inner = chips[(size_t)i].reduced(7, 6);
+        auto top = inner.removeFromTop(18);
+        const auto badge = top.removeFromLeft(15).toFloat().withSizeKeepingCentre(15.0f, 15.0f);
+        const bool tame = bands[(size_t)i].tame;
+        g.setColour(tame ? theme::reduction : tint);
+        g.drawEllipse(badge.reduced(0.75f), 1.5f);
+        g.setColour(theme::text);
+        g.setFont(theme::font(10.0f, true));
+        g.drawText(juce::String(i + 1), badge, juce::Justification::centred);
+        top.removeFromLeft(5);
+        g.setColour(on ? theme::text : theme::dimText);
+        g.setFont(theme::font(11.0f, true));
+        g.drawFittedText(bands[(size_t)i].name.toUpperCase(), top, juce::Justification::centredLeft, 1, 0.7f);
+
+        inner.removeFromTop(4);
+        g.setColour(on ? theme::text : theme::dimText);
+        g.setFont(theme::font(12.0f, on));
+        g.drawFittedText(readOut(i, 0), inner.removeFromTop(17), juce::Justification::centredLeft, 1, 0.8f);
+        g.setColour(theme::dimText);
+        g.setFont(theme::font(11.5f));
+        g.drawFittedText(readOut(i, 1), inner.removeFromTop(16), juce::Justification::centredLeft, 1, 0.8f);
+    }
+}
+
+//==============================================================================
 ModuleTab::ModuleTab(APVTS& s, const char* enableParam, juce::String t, std::function<void()> select)
     : title(std::move(t))
     , onSelect(std::move(select))
     , attachment(s, enableParam, power)
 {
+    theme::setTint(*this, theme::familyOfEnableParam(enableParam));
     power.setTooltip("Switch " + title + " on or off");
     power.onStateChange = [this] { repaint(); };
     addAndMakeVisible(power);
@@ -744,7 +941,8 @@ TuneDisplay::TuneDisplay(APVTS& s, const dsp::Tune& t)
         };
         addAndMakeVisible(b);
     }
-    setTooltip("Grey = what you sing, pink = what the stream hears. Lighter rows are the notes of the chosen key.");
+    theme::setTint(*this, theme::family(ModuleId::Tune));
+    setTooltip("Grey = what you sing, blue = what the stream hears. Lighter rows are the notes of the chosen key.");
 }
 
 juce::String TuneDisplay::noteName(int midi)
@@ -758,7 +956,9 @@ void TuneDisplay::tick()
     const auto& h = tune.getHistory();
     const int written = h.written.load(std::memory_order_acquire);
     if (written == lastWritten)
-        return;
+        return; // Tune is off or silent: nothing to draw, nothing spent
+    if (light && (++lightSkip & 1) != 0)
+        return; // Simple mode: every other update
     lastWritten = written;
     float sum = 0.0f;
     int count = 0;
@@ -823,7 +1023,7 @@ void TuneDisplay::paint(juce::Graphics& g)
             g.setColour(theme::panelRaised.withAlpha(pc == 0 ? 0.9f : 0.55f));
             g.fillRect(juce::Rectangle<float>(plot.getX(), y - rowH * 0.5f, plot.getWidth(), rowH).getIntersection(plot));
         }
-        g.setColour(pc == 0 ? theme::accent.withAlpha(0.8f) : (inScale ? theme::dimText : theme::faintText.withAlpha(0.6f)));
+        g.setColour(pc == 0 ? theme::family(ModuleId::Tune).withAlpha(0.9f) : (inScale ? theme::dimText : theme::faintText.withAlpha(0.6f)));
         g.setFont(theme::font(10.0f, pc == 0));
         g.drawText(noteName(n), juce::Rectangle<float>(plot.getX() - 36.0f, y - 6.0f, 32.0f, 12.0f), juce::Justification::centredRight);
     }
@@ -834,7 +1034,8 @@ void TuneDisplay::paint(juce::Graphics& g)
     auto drawLine = [&](const std::array<float, kShown>& v, juce::Colour colour, float thickness) {
         juce::Path p;
         bool drawing = false;
-        for (int i = 0; i < kShown; i += 2) // every other point: plenty for the eye, half the work
+        const int stride = light ? 4 : 2; // every 2nd point is plenty for the eye; Simple mode takes every 4th
+        for (int i = 0; i < kShown; i += stride)
         {
             const float x = plot.getX() + plot.getWidth() * (float)i / (float)(kShown - 1);
             if (v[(size_t)i] <= 0.0f)
@@ -850,13 +1051,14 @@ void TuneDisplay::paint(juce::Graphics& g)
             drawing = true;
         }
         g.setColour(colour);
-        g.strokePath(p, juce::PathStrokeType(thickness, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+        g.strokePath(p, light ? juce::PathStrokeType(thickness, juce::PathStrokeType::beveled, juce::PathStrokeType::butt)
+                              : juce::PathStrokeType(thickness, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
     };
     g.saveState();
     g.reduceClipRegion(plot.toNearestInt());
     drawLine(input, theme::dimText.withAlpha(0.8f), 1.5f);
     if (on)
-        drawLine(output, theme::accent, 2.4f);
+        drawLine(output, theme::family(ModuleId::Tune), 2.4f);
     g.restoreState();
 
     // Current note, top left.
@@ -904,11 +1106,7 @@ DisplayPanel::DisplayPanel(APVTS& s, SpectrumTap& t, std::function<double()> sr,
     , eq(s, analyzer, sr)
     , multiband(s, analyzer)
     , tuneDisplay(s, tune)
-    , eqFields(s, {{"1", "Low Cut", {{pid::eqLowCut, "Freq"}, {pid::eqLowCutSlope, "Slope"}, {pid::eqPlosive, "Pops"}}},
-                   {"2", "Low Shelf", {{pid::eqLowFreq, "Freq"}, {pid::eqLowGain, "Gain"}}},
-                   {"3", "Mid", {{pid::eqMidFreq, "Freq"}, {pid::eqMidGain, "Gain"}, {pid::eqMidQ, "Q"}}},
-                   {"4", "Air", {{pid::eqHighFreq, "Freq"}, {pid::eqHighGain, "Gain"}}},
-                   {"5", "Tame", {{pid::eqTameFreq, "Freq"}, {pid::eqTameThreshold, "Thresh"}, {pid::eqTameRange, "Max Cut"}}}})
+    , eqFields(s)
     , mbFields(s, {{"", "Band Splits", {{pid::mbLowCross, "Low | Mid"}, {pid::mbHighCross, "Mid | High"}}},
                    {"", "Low Band", {{pid::mbLowThreshold, "Threshold"}, {pid::mbLowGain, "Gain"}}},
                    {"", "Mid Band", {{pid::mbMidThreshold, "Threshold"}, {pid::mbMidGain, "Gain"}}},
@@ -924,6 +1122,15 @@ DisplayPanel::DisplayPanel(APVTS& s, SpectrumTap& t, std::function<double()> sr,
     eqTab.setTooltip("Show the EQ");
     mbTab.setTooltip("Show the multiband compressor");
     tuneTab.setTooltip("Show Tune (pitch correction)");
+    for (auto* c : std::initializer_list<juce::Component*>{&eq, &eqFields})
+        theme::setTint(*c, theme::family(ModuleId::Equalizer));
+    for (auto* c : std::initializer_list<juce::Component*>{&multiband, &mbFields})
+        theme::setTint(*c, theme::family(ModuleId::Multiband));
+    theme::setTint(tuneFields, theme::family(ModuleId::Tune));
+    // The graph and the bar under it share one selected point.
+    eq.onSelect = [this](int i) { eqFields.select(i); };
+    eqFields.onSelect = [this](int i) { eq.setSelected(i); };
+    eq.setSelected(eqFields.getSelected());
     select(0);
     tap.setActive(true);
 }
@@ -962,6 +1169,8 @@ void DisplayPanel::tick(const dsp::VocalChain::Activity& activity)
         return;
     multiband.setReductions(activity.multibandReductionDb);
     eq.setTameReduction(activity.tameReductionDb);
+    if (current == 0)
+        eqFields.refresh();
     if (current == 2)
     {
         tuneDisplay.tick();

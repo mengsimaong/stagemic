@@ -246,7 +246,7 @@ void liveUi()
             processor.setVoiceSetupOffered(); // not the first-time welcome
             processor.setRateAndBufferSizeDetails(48000.0, 480);
             processor.prepareToPlay(48000.0, 480);
-            processor.getPresetManager().loadFactoryPreset(only == "profile" ? "Clean Vocal" : "Pop Tune");
+            processor.getPresetManager().loadFactoryPreset(only == "profile" || juce::SystemStats::getEnvironmentVariable("STAGEMIC_UI_PRESET", {}) == "clean" ? "Clean Vocal" : "Pop Tune");
             processor.setAdvancedMode(advanced);
             std::unique_ptr<juce::AudioProcessorEditor> editor;
             if (open)
@@ -278,7 +278,7 @@ void liveUi()
                     std::this_thread::sleep_until(next);
                 }
             });
-            const double seconds = only == "profile" ? 40.0 : (only == "simple" ? 3.0 : (only == "storm" ? 20.0 : 10.0));
+            const double seconds = only == "profile" ? 40.0 : (only == "simple" ? 12.0 : (only == "storm" ? 20.0 : 10.0));
             // CPU time used by this (the window's) thread. Windows has no clock_gettime:
             // there this developer aid falls back to the whole process.
             auto threadCpu = [] {

@@ -34,10 +34,10 @@ private:
     APVTS::SliderAttachment attachment;
 };
 
-/** Knob with an editable value on top and its name underneath:
-        2.50 kHz     <- click and type (e.g. "2.5k", "-3", "+4.5 dB")
-          (knob)     <- drag up/down; double-click resets
+/** Knob with its name on top and an editable value underneath:
           Freq
+          (knob)     <- drag up/down; double-click resets
+        2.50 kHz     <- click and type (e.g. "2.5k", "-3", "+4.5 dB")
 */
 class ValueKnob final : public juce::Component
 {
@@ -53,7 +53,7 @@ private:
     APVTS::SliderAttachment attachment;
 };
 
-/** Multiple-choice setting: name below, a button showing the current choice.
+/** Multiple-choice setting: name on top, a button showing the current choice.
     Each click moves to the next choice (e.g. Tube -> Tape -> Console -> Tube). */
 class ChoiceToggle final : public juce::Component
 {
@@ -92,6 +92,9 @@ public:
     void paint(juce::Graphics&) override;
 
 private:
+    juce::Rectangle<float> barArea() const;
+    float yFor(float linear) const;
+
     juce::String label;
     float paintedLevel = -1.0f, paintedHold = -1.0f;
     float level = 0.0f, hold = 0.0f;

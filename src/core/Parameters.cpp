@@ -53,6 +53,12 @@ const FloatSpec floatSpecs[] = {
     {pid::eqMidFreq,       "Mid Freq",          200.0f, 8000.0f, 2500.0f, 1500.0f, Unit::Hz},
     {pid::eqMidGain,       "Mid Gain",          -12.0f,   12.0f,   0.0f,   0.0f,   Unit::dB},
     {pid::eqMidQ,          "Mid Width (Q)",       0.3f,    4.0f,   1.0f,   1.0f,   Unit::plain},
+    {pid::eqLoMidFreq,     "Low Mid Freq",       80.0f, 2000.0f,  400.0f,  400.0f, Unit::Hz},
+    {pid::eqLoMidGain,     "Low Mid Gain",      -12.0f,   12.0f,   0.0f,   0.0f,   Unit::dB},
+    {pid::eqLoMidQ,        "Low Mid Width (Q)",   0.3f,    8.0f,   1.0f,   1.5f,   Unit::plain},
+    {pid::eqHiMidFreq,     "High Mid Freq",    1000.0f, 16000.0f, 5000.0f, 5000.0f, Unit::Hz},
+    {pid::eqHiMidGain,     "High Mid Gain",     -12.0f,   12.0f,   0.0f,   0.0f,   Unit::dB},
+    {pid::eqHiMidQ,        "High Mid Width (Q)",  0.3f,    8.0f,   1.0f,   1.5f,   Unit::plain},
     {pid::eqHighFreq,      "Air Freq",         2000.0f, 16000.0f, 9000.0f, 7000.0f, Unit::Hz},
     {pid::eqHighGain,      "Air Gain",          -12.0f,   12.0f,   2.0f,   0.0f,   Unit::dB},
     {pid::eqPlosive,       "Plosive Tamer",       0.0f,  100.0f,  50.0f,   0.0f,   Unit::percent},
@@ -137,7 +143,7 @@ const BoolSpec boolSpecs[] = {
 
 const std::array<ModuleDescriptor, kNumModules> descriptors{{
     {ModuleId::Gate,       "gate",       "Gate",        pid::gateOn, {pid::gateThreshold, pid::gateRange, pid::gateRelease, pid::gateRatio}},
-    {ModuleId::Equalizer,  "eq",         "EQ",          pid::eqOn,   {pid::eqLowCut, pid::eqLowFreq, pid::eqLowGain, pid::eqMidFreq, pid::eqMidGain, pid::eqMidQ, pid::eqHighFreq, pid::eqHighGain, pid::eqPlosive, pid::eqTameFreq, pid::eqTameThreshold, pid::eqTameRange}},
+    {ModuleId::Equalizer,  "eq",         "EQ",          pid::eqOn,   {pid::eqLowCut, pid::eqLowFreq, pid::eqLowGain, pid::eqMidFreq, pid::eqMidGain, pid::eqMidQ, pid::eqLoMidFreq, pid::eqLoMidGain, pid::eqLoMidQ, pid::eqHiMidFreq, pid::eqHiMidGain, pid::eqHiMidQ, pid::eqHighFreq, pid::eqHighGain, pid::eqPlosive, pid::eqTameFreq, pid::eqTameThreshold, pid::eqTameRange}},
     {ModuleId::Leveler,    "leveler",    "Auto Level",  pid::levOn,  {pid::levTarget, pid::levRange, pid::levSpeed}},
     {ModuleId::DeEsser,    "deesser",    "De-Esser",    pid::dsOn,   {pid::dsFreq, pid::dsThreshold, pid::dsRange}},
     {ModuleId::Compressor, "compressor", "Compressor",  pid::compOn, {pid::compThreshold, pid::compRatio, pid::compAttack, pid::compRelease, pid::compMakeup, pid::compMix}},

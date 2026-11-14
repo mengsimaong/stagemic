@@ -57,6 +57,13 @@ inline constexpr const char* eqLowGain = "eq_low_gain";
 inline constexpr const char* eqMidFreq = "eq_mid_freq";
 inline constexpr const char* eqMidGain = "eq_mid_gain";
 inline constexpr const char* eqMidQ = "eq_mid_q";
+// Two more bells for detailed work (0 dB = not in the signal path at all)
+inline constexpr const char* eqLoMidFreq = "eq_lomid_freq";
+inline constexpr const char* eqLoMidGain = "eq_lomid_gain";
+inline constexpr const char* eqLoMidQ = "eq_lomid_q";
+inline constexpr const char* eqHiMidFreq = "eq_himid_freq";
+inline constexpr const char* eqHiMidGain = "eq_himid_gain";
+inline constexpr const char* eqHiMidQ = "eq_himid_q";
 inline constexpr const char* eqHighFreq = "eq_high_freq";
 inline constexpr const char* eqHighGain = "eq_high_gain";
 // Harshness tamer: a dynamic band that dips only while it gets too loud (Max Cut 0 = off)
@@ -158,7 +165,7 @@ struct ModuleDescriptor
     const char* key;          // stable identifier used in saved module order
     const char* displayName;  // shown in the UI
     const char* enableParam;  // on/off switch
-    std::array<const char*, 16> params; // knobs, nullptr-terminated
+    std::array<const char*, 24> params; // knobs, nullptr-terminated
 };
 
 const std::array<ModuleDescriptor, kNumModules>& moduleDescriptors();

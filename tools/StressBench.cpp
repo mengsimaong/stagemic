@@ -160,6 +160,41 @@ int main(int argc, char* argv[])
     juce::AudioBuffer<float> voice(2, (int)reader->lengthInSamples);
     reader->read(&voice, 0, voice.getNumSamples(), 0, true, true);
 
+    // "cost" mode: a compact table for comparing two builds (best of 5 runs each, so a
+    // busy machine can't make one look slower): each module alone, then the presets.
+    if (argc > 3 && juce::String(argv[3]) == "cost")
+    {
+        auto best = [&](const juce::String& preset, bool everything, auto&& perBlock) {
+            double pct = 1.0e9;
+            for (int attempt = 0; attempt < 5; ++attempt)
+                pct = std::min(pct, run(voice, 48000.0, seconds, preset, everything, 1024, 2, perBlock).meanPct);
+            return pct;
+        };
+        std::printf("module alone (others off), %% of one core, 48 kHz stereo:\n");
+        std::printf("  %-22s %6.3f\n", "nothing on", best({}, false, [](StageMicProcessor& p, std::vector<float>*, int, int, int b, int) {
+                        if (b == 0)
+                        {
+                            for (auto* id : allOn)
+                                set(p, id, 0.0f);
+                            p.getChain().requestSnap();
+                        }
+                    }));
+        for (auto* module : allOn)
+            std::printf("  %-22s %6.3f\n", module, best({}, false, [module](StageMicProcessor& p, std::vector<float>*, int, int, int b, int) {
+                            if (b == 0)
+                            {
+                                for (auto* id : allOn)
+                                    set(p, id, id == module ? 1.0f : 0.0f);
+                                p.getChain().requestSnap();
+                            }
+                        }));
+        std::printf("presets:\n");
+        for (const auto& name : PresetManager::getFactoryPresetNames())
+            std::printf("  %-22s %6.3f\n", name.toRawUTF8(), best(name, false, none));
+        std::printf("  %-22s %6.3f\n", "EVERYTHING ON", best("Pop Tune", true, none));
+        return 0;
+    }
+
     // --- 1. Cost ------------------------------------------------------------
     for (double sr : {48000.0, 44100.0})
     {

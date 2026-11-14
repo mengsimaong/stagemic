@@ -12,6 +12,7 @@ SimpleTile::SimpleTile(APVTS& s, const char* enableParam, juce::String t, std::v
     , hint(std::move(h))
     , attachment(s, enableParam, power)
 {
+    theme::setTint(*this, theme::familyOfEnableParam(enableParam));
     power.setTooltip("Switch " + title + " on or off");
     power.onStateChange = [this] { repaint(); };
     addAndMakeVisible(power);
@@ -62,7 +63,7 @@ SimpleView::SimpleView(APVTS& s, const dsp::Tune& tune)
     , warmth(s, pid::satOn, "Warmth", {{pid::satDrive, "Drive"}}, "Analog-style richness")
     , reverb(s, pid::revOn, "Reverb", {{pid::revMix, "Amount"}, {pid::revSize, "Size"}}, "Room or hall around the voice")
     , echo(s, pid::dlyOn, "Echo", {{pid::dlyMix, "Amount"}, {pid::dlyTime, "Time"}}, "Repeats of the voice")
-    , chorus(s, pid::chOn, "Chorus", {{pid::chMix, "Amount"}}, "Wider, shimmering voice")
+    , chorus(s, pid::chOn, "Chorus", {{pid::chMix, "Amount"}, {pid::chRate, "Speed"}}, "Wider, shimmering voice")
     , tuneAttachment(s, pid::tuneOn, tunePower)
     , tuneDisplay(s, tune)
     , key(s, pid::tuneKey, "Key")
@@ -72,6 +73,9 @@ SimpleView::SimpleView(APVTS& s, const dsp::Tune& tune)
     for (auto* c : std::initializer_list<juce::Component*>{&cleanUp, &tone, &compress, &deEss, &warmth, &reverb, &echo, &chorus,
                                                            &tunePower, &tuneDisplay, &key, &scale, &voice})
         addAndMakeVisible(c);
+    for (auto* c : std::initializer_list<juce::Component*>{&tunePower, &key, &scale, &voice})
+        theme::setTint(*c, theme::family(ModuleId::Tune));
+    tuneDisplay.setLight(true); // Simple mode is the light one
     tunePower.setTooltip("Switch Tune (pitch correction) on or off");
     tunePower.onStateChange = [this] { repaint(); };
 }
@@ -100,45 +104,38 @@ void SimpleView::paint(juce::Graphics& g)
 void SimpleView::resized()
 {
     auto area = getLocalBounds();
-    constexpr int gap = 8;
+    constexpr int gap = 8, rowHeight = 218;
 
-    voiceCard = area.removeFromTop(218);
+    // Three rows: Voice, Effects (same grid of tiles, so they line up), Tune.
+    voiceCard = area.removeFromTop(rowHeight);
     area.removeFromTop(gap);
-    auto lower = area;
-    effectsCard = lower.removeFromLeft(lower.getWidth() * 42 / 100);
-    lower.removeFromLeft(gap);
-    tuneCard = lower;
+    effectsCard = area.removeFromTop(rowHeight);
+    area.removeFromTop(gap);
+    tuneCard = area;
 
-    // Voice: five tiles in a row (Tone is wider: two knobs).
-    {
-        auto row = voiceCard.withTrimmedTop(28).reduced(10, 0).withTrimmedBottom(10);
-        const int unit = (row.getWidth() - 4 * gap) / 6;
-        for (auto [tile, units] : {std::pair<SimpleTile*, int>{&cleanUp, 1}, {&tone, 2}, {&compress, 1}, {&deEss, 1}, {&warmth, 1}})
+    // Six equal units per row; tiles with two knobs take two.
+    auto layoutRow = [](juce::Rectangle<int> card, std::initializer_list<std::pair<SimpleTile*, int>> tiles) {
+        auto row = card.withTrimmedTop(28).reduced(10, 0).withTrimmedBottom(10);
+        const int unit = (row.getWidth() - 5 * gap) / 6;
+        for (auto [tile, units] : tiles)
         {
             tile->setBounds(row.removeFromLeft(unit * units + (units - 1) * gap));
             row.removeFromLeft(gap);
         }
-    }
-    // Effects: Reverb and Echo (two knobs each) above Chorus.
-    {
-        auto col = effectsCard.withTrimmedTop(28).reduced(10, 0).withTrimmedBottom(10);
-        const int h = (col.getHeight() - gap) / 2;
-        auto top = col.removeFromTop(h);
-        col.removeFromTop(gap);
-        reverb.setBounds(top.removeFromLeft((top.getWidth() - gap) / 2));
-        top.removeFromLeft(gap);
-        echo.setBounds(top);
-        chorus.setBounds(col);
-    }
-    // Tune: on/off, the pitch graph with the style buttons, then Key / Scale / Voice.
+    };
+    layoutRow(voiceCard, {{&cleanUp, 1}, {&tone, 2}, {&compress, 1}, {&deEss, 1}, {&warmth, 1}});
+    layoutRow(effectsCard, {{&reverb, 2}, {&echo, 2}, {&chorus, 2}});
+
+    // Tune: on/off, a wide pitch graph with the style buttons, and Key / Scale / Voice beside it.
     {
         tunePower.setBounds(tuneCard.getX() + 14, tuneCard.getY() + 5, 22, 20);
         auto inner = tuneCard.withTrimmedTop(28).reduced(8, 0).withTrimmedBottom(8);
-        auto controls = inner.removeFromBottom(64);
+        auto controls = inner.removeFromRight(150).withTrimmedTop(30);
         tuneDisplay.setBounds(inner);
-        const int w = controls.getWidth() / 3;
+        const int h = juce::jmin(62, controls.getHeight() / 3);
+        controls = controls.withSizeKeepingCentre(controls.getWidth(), h * 3);
         for (auto* c : {static_cast<juce::Component*>(&key), static_cast<juce::Component*>(&scale), static_cast<juce::Component*>(&voice)})
-            c->setBounds(controls.removeFromLeft(w).reduced(6, 4));
+            c->setBounds(controls.removeFromTop(h).reduced(8, 4));
     }
 }
 

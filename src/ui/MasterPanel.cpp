@@ -14,6 +14,8 @@ MasterPanel::MasterPanel(APVTS& s)
     , inGain(s, pid::inGain, "Input")
     , outGain(s, pid::outGain, "Output")
 {
+    for (auto* c : std::initializer_list<juce::Component*>{&levelPower, &levelTarget, &levelRange, &levelSpeed})
+        theme::setTint(*c, theme::family(ModuleId::Leveler));
     levelPower.setTooltip("Auto Level: evens out quiet talking and loud singing");
     levelTarget.setTooltip("Target: the level Auto Level steers your voice toward");
     levelRange.setTooltip("Range: the most Auto Level may raise or lower your voice");

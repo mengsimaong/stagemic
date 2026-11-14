@@ -26,7 +26,7 @@ No DAW, and no stack of ten separate OBS filters.
 | 🔧 | Sound-quality round: Auto Level, parallel effect sends with ducking, new plate-style reverb with pre-delay/filters, smoother compressor, relative de-esser, expander, 24 dB/oct low cut, softer limiter, saturation character | 2.6 | built; tuning on a real voice next |
 | ✅ | Presets: 6 factory presets, Save / Save As / Delete, Import / Export `.stagemicpreset` files | 2 | in testing |
 | 🔧 | "Set up my voice": 11-second guided measurement sets Input Gain, Gate and De-Ess frequency for your mic (kept across presets); chain bar with family colours, live activity, on/off and click-to-show | 2.7 | built; needs a real-mic check |
-| 🔧 | Harshness tamer (EQ point 5): a dynamic band that dips 1.5–6 kHz only while a belt gets harsh, level-independent; off until Max Cut is raised | 2.7 | built; tune on her voice |
+| 🔧 | Harshness tamer (EQ point 7): a dynamic band that dips 1.5–6 kHz only while a belt gets harsh, level-independent; off until Max Cut is raised | 2.7 | built; tune on her voice |
 | 🔧 | Plosive tamer (EQ "Pops"): a high-pass that sweeps up to 160 Hz only during "p"/"b" thumps; zero latency, sung low notes untouched; off at 0 % | 2.7 | built; tune on her voice |
 | ✅ | One-click Windows installer + simple download page | 2.5 | done |
 | | Third-party **VST3** plugin rack: safe scanning, chaining, editor windows, saved in presets | 3 | |
@@ -41,7 +41,7 @@ could be added later if a must-have plugin only exists as VST2.
 
 ## Install
 
-**[Download StageMic-Setup.exe](https://github.com/mengsimaong/stagemic/releases/latest/download/StageMic-Setup.exe)**, close OBS, run it. Details: [docs/INSTALL.md](docs/INSTALL.md).
+**[Download the installer from itch.io](https://mengsimaong.itch.io/paopoa-stagemic)**, close OBS, run it. Details: [docs/INSTALL.md](docs/INSTALL.md).
 
 ## Building it yourself
 

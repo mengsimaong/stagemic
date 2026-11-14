@@ -58,7 +58,7 @@ protected:
     SpectrumAnalyzer& analyzer;
 };
 
-/** EQ curve with four draggable points over the spectrum. */
+/** EQ curve with seven draggable points over the spectrum. */
 class EqDisplay final : public FrequencyGraph
 {
 public:
@@ -72,6 +72,16 @@ public:
     void mouseExit(const juce::MouseEvent&) override;
     void mouseDoubleClick(const juce::MouseEvent&) override;
     void mouseWheelMove(const juce::MouseEvent&, const juce::MouseWheelDetails&) override;
+
+    /** Where point `index` (0 = point 1) is drawn, for the tests. */
+    juce::Point<float> getNodePosition(int index) const { return nodePosition(index); }
+    static constexpr int numNodes = 7;
+    /** The selected point (the one used last): ringed, drawn on top, its knobs shown below. */
+    void setSelected(int index);
+    int getSelected() const noexcept { return lastUsed; }
+    std::function<void(int)> onSelect; // called when a point is grabbed on the graph
+    /** The gain the drawn curve shows at `freq` (without the live Tame dip), for the tests. */
+    float getDrawnResponseDb(float freq) const { return responseDb(freq); }
 
 private:
     struct Node
@@ -95,8 +105,9 @@ private:
 
     APVTS& state;
     std::function<double()> sampleRate;
-    std::array<Node, 5> nodes;
+    std::array<Node, numNodes> nodes;
     int hovered = -1, dragging = -1;
+    int lastUsed = -1; // the point dragged last: drawn on top and grabbed first where points overlap
     float tameCutDb = 0.0f; // live
 
 public:
@@ -174,6 +185,45 @@ private:
     std::vector<juce::Rectangle<int>> groupAreas;
 };
 
+/** Under the EQ graph: one chip per point (number, name, where it is now) and
+    the knobs of the selected point. Click a chip, or grab a point on the graph. */
+class EqBandBar final
+    : public juce::Component
+    , public juce::SettableTooltipClient
+{
+public:
+    explicit EqBandBar(APVTS& state);
+    void select(int index);
+    int getSelected() const noexcept { return selected; }
+    /** Call regularly: redraws the chips whose read-out changed. */
+    void refresh();
+    std::function<void(int)> onSelect; // called when a chip is clicked
+
+    void paint(juce::Graphics&) override;
+    void resized() override;
+    void mouseDown(const juce::MouseEvent&) override;
+    void mouseMove(const juce::MouseEvent&) override;
+    void mouseExit(const juce::MouseEvent&) override;
+
+private:
+    struct Band
+    {
+        juce::String name;
+        const char* freqId;
+        const char* gainId; // nullptr = none
+        bool tame;
+    };
+    juce::String readOut(int index, int line) const;
+    int chipAt(juce::Point<int>) const;
+
+    APVTS& state;
+    std::vector<Band> bands;
+    std::vector<std::unique_ptr<FieldRow>> rows;
+    std::vector<juce::Rectangle<int>> chips;
+    std::array<float, 7> shownFreq{}, shownGain{}; // what the chips last drew
+    int selected = 3, hover = -1;
+};
+
 /** Tab with its own power switch, e.g. "[■] EQ". */
 class ModuleTab final
     : public juce::Component
@@ -210,6 +260,9 @@ class TuneDisplay final
 public:
     TuneDisplay(APVTS& state, const dsp::Tune& tune);
     void tick();
+    /** Light drawing for Simple mode: the graph updates 10 times a second instead
+        of 20 and its lines use fewer points and the plainest stroke. */
+    void setLight(bool shouldBeLight) noexcept { light = shouldBeLight; }
     void paint(juce::Graphics&) override;
     void resized() override;
 
@@ -228,6 +281,8 @@ private:
     std::array<float, kShown> input{}, output{};
     int lastWritten = -1;
     float centre = 64.0f;
+    bool light = false;
+    int lightSkip = 0;
     juce::OwnedArray<juce::TextButton> styleButtons;
     std::vector<Style> styles;
     juce::Rectangle<float> plot;
@@ -256,7 +311,8 @@ private:
     EqDisplay eq;
     MultibandDisplay multiband;
     TuneDisplay tuneDisplay;
-    FieldRow eqFields, mbFields, tuneFields;
+    EqBandBar eqFields;
+    FieldRow mbFields, tuneFields;
     int current = 0, frame = 0;
     bool live = true;
 };

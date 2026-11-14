@@ -1,6 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-// StageMic's look: dark, compact channel strip with a pink accent.
+// StageMic's look: dark, compact channel strip.
+// Colour roles: pink (accent) is the brand and the main action only. Each module
+// family has its own colour ("tint") for its switch, knob values and graphs, the
+// same one as its chip in the chain bar. Controls outside a module are neutral.
 #pragma once
+
+#include "core/Parameters.h"
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
@@ -12,15 +17,63 @@ inline const juce::Colour panelRaised{0xff22252e};
 inline const juce::Colour panelOff{0xff16171d};
 inline const juce::Colour outline{0xff2b2e38};
 inline const juce::Colour text{0xffe9e9f0};
-inline const juce::Colour dimText{0xff8b8e9a};
-inline const juce::Colour faintText{0xff5d606b};
+inline const juce::Colour dimText{0xffa2a5b1};
+inline const juce::Colour faintText{0xff747783};
 inline const juce::Colour accent{0xffff4f9a};
 inline const juce::Colour accentSoft{0xffff8cbf};
-inline const juce::Colour spectrum{0xff5f7bb0};
+inline const juce::Colour spectrum{0xff687080}; // neutral grey, so the coloured curves read on top
 inline const juce::Colour meterGreen{0xff3ddc97};
 inline const juce::Colour meterYellow{0xfff5d547};
 inline const juce::Colour meterRed{0xffff5470};
 inline const juce::Colour reduction{0xffffa64d};
+inline const juce::Colour knobCap{0xff2c303b};
+inline const juce::Colour neutral{0xffc9ccd8}; // values of controls that belong to no module
+
+/** Module families and their colours. */
+inline juce::Colour family(ModuleId id)
+{
+    switch (id)
+    {
+        case ModuleId::Gate:
+        case ModuleId::Equalizer:
+        case ModuleId::Leveler: return juce::Colour(0xff6aa9ff);   // clean-up: blue
+        case ModuleId::Compressor:
+        case ModuleId::Multiband: return juce::Colour(0xffffb454); // dynamics: amber
+        case ModuleId::Saturation:
+        case ModuleId::Exciter: return juce::Colour(0xffff8a6b);   // colour: coral
+        case ModuleId::DeEsser: return juce::Colour(0xffb48cff);   // de-ess: violet
+        case ModuleId::Chorus:
+        case ModuleId::Delay:
+        case ModuleId::Reverb: return juce::Colour(0xff3ddc97);    // space: green
+        case ModuleId::Limiter: return juce::Colour(0xffff5470);   // safety: red
+        case ModuleId::Tune: return juce::Colour(0xff4fd1e8);      // pitch: cyan
+    }
+    return neutral;
+}
+
+/** The family colour of the module switched by this on/off setting (neutral if none). */
+inline juce::Colour familyOfEnableParam(const juce::String& enableParam)
+{
+    for (const auto& d : moduleDescriptors())
+        if (enableParam == d.enableParam)
+            return family(d.id);
+    return neutral;
+}
+
+/** Gives a component (and everything inside it) a tint. */
+inline void setTint(juce::Component& c, juce::Colour colour)
+{
+    c.getProperties().set("tint", (juce::int64)colour.getARGB());
+}
+
+/** The tint of the nearest component up the tree that has one. */
+inline juce::Colour tintOf(const juce::Component& c)
+{
+    for (auto* p = &c; p != nullptr; p = p->getParentComponent())
+        if (auto* v = p->getProperties().getVarPointer("tint"))
+            return juce::Colour((juce::uint32)(juce::int64)*v);
+    return neutral;
+}
 
 inline juce::FontOptions font(float size, bool bold = false)
 {
@@ -77,12 +130,12 @@ public:
         juce::Path value;
         value.addCentredArc(centre.x, centre.y, arcRadius, arcRadius, 0.0f, juce::jmin(zeroAngle, angle),
                             juce::jmax(zeroAngle, angle), true);
-        g.setColour(accent.withAlpha(slider.isEnabled() ? 1.0f : 0.4f));
+        g.setColour(tintOf(slider).withAlpha(slider.isEnabled() ? 1.0f : 0.4f));
         g.strokePath(value, juce::PathStrokeType(thickness, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
 
+        // Flat cap: one fill, no gradient.
         const auto capRadius = radius - thickness * 1.9f;
-        g.setGradientFill(juce::ColourGradient(panelRaised.brighter(0.25f), centre.x, centre.y - capRadius, panelRaised,
-                                               centre.x, centre.y + capRadius, false));
+        g.setColour(knobCap);
         g.fillEllipse(juce::Rectangle<float>(capRadius * 2.0f, capRadius * 2.0f).withCentre(centre));
 
         juce::Path pointer;
@@ -104,13 +157,14 @@ public:
 
             const bool bipolar = slider.getMinimum() < 0.0 && slider.getMaximum() > 0.0;
             const float from = bipolar ? (float)x + (float)w * (float)slider.valueToProportionOfLength(0.0) : (float)x;
-            g.setColour(accent.withAlpha(slider.isEnabled() ? 0.85f : 0.35f));
+            const auto tint = tintOf(slider);
+            g.setColour(tint.withAlpha(slider.isEnabled() ? 0.85f : 0.35f));
             g.fillRoundedRectangle(juce::Rectangle<float>(juce::jmin(from, sliderPos), track.getY(), std::abs(sliderPos - from), 4.0f), 2.0f);
 
             const auto thumb = juce::Rectangle<float>(11.0f, 11.0f).withCentre({sliderPos, track.getCentreY()});
             g.setColour(juce::Colour(0xffd9dae2));
             g.fillEllipse(thumb);
-            g.setColour(accent);
+            g.setColour(tint);
             g.drawEllipse(thumb.reduced(0.5f), 1.5f);
             return;
         }
@@ -137,7 +191,8 @@ public:
 
         g.setColour(background);
         g.fillRoundedRectangle(track, 2.0f);
-        g.setColour(accent.withAlpha(0.75f));
+        const auto tint = tintOf(slider);
+        g.setColour(tint.withAlpha(0.75f));
         g.fillRoundedRectangle(track.withTop(sliderPos), 2.0f);
 
         // Fader cap
@@ -147,7 +202,7 @@ public:
         g.fillRoundedRectangle(cap, 3.0f);
         g.setColour(background.withAlpha(0.6f));
         g.drawRoundedRectangle(cap, 3.0f, 1.0f);
-        g.setColour(accent);
+        g.setColour(tint);
         g.fillRect(cap.withSizeKeepingCentre(cap.getWidth() - 8.0f, 2.0f));
     }
 
@@ -181,7 +236,9 @@ public:
         const auto base = primary ? accent : panelRaised;
         g.setColour(down ? base.brighter(0.15f) : (over ? base.brighter(0.07f) : base));
         g.fillRoundedRectangle(r, 5.0f);
-        g.setColour(primary ? accent.brighter(0.2f) : (b.getToggleState() ? accent.withAlpha(0.8f) : outline));
+        // A lit toggle inside a module is outlined in the module's colour; elsewhere in pink.
+        const auto lit = b.getProperties().contains("accentToggle") ? accent : tintOf(b);
+        g.setColour(primary ? accent.brighter(0.2f) : (b.getToggleState() ? (lit == neutral ? accent : lit).withAlpha(0.85f) : outline));
         g.drawRoundedRectangle(r, 5.0f, 1.0f);
     }
 

@@ -93,7 +93,7 @@ DeEsserStrip::DeEsserStrip(APVTS& s, dsp::VocalChain& c)
                             "Remember to switch it off again!");
     listenButton.onClick = [this] { chain.setDeEsserListen(listenButton.getToggleState()); };
     for (auto* b : {&autoButton, &listenButton})
-        b->setColour(juce::TextButton::buttonOnColourId, theme::accent);
+        b->setColour(juce::TextButton::buttonOnColourId, theme::family(ModuleId::DeEsser));
 
     for (auto* comp : std::initializer_list<juce::Component*>{&threshold, &reduction, &freq, &maxCut, &mode, &autoButton, &listenButton})
         addAndMakeVisible(comp);
@@ -211,6 +211,7 @@ TabbedModules::TabbedModules(APVTS& s, std::vector<Tab> tabs, juce::String foote
                     knob->setTooltip(c.tooltip);
                 control = std::move(knob);
             }
+            theme::setTint(*control, theme::family(tabs[i].module));
             addChildComponent(*control);
             page.controls.push_back(std::move(control));
         }

@@ -1357,19 +1357,23 @@ private:
             setParam(*p, d.enableParam, 1.0f);
         p->getChain().requestSnap();
 
-        constexpr int seconds = 20;
-        auto signal = sine(220.0, 0.4f, (int)sr * seconds);
-
-        const auto start = std::chrono::steady_clock::now();
-        processSignal(*p, signal);
-        const double elapsed = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
-        const double percentOfOneCore = 100.0 * elapsed / seconds;
-
+        // Best of three runs: another program hogging a shared CI machine for a moment
+        // slows one run down, but it can't make the chain look faster than it is.
+        constexpr int seconds = 8;
         auto q = makeProcessor();
-        auto defaults = sine(220.0, 0.4f, (int)sr * seconds);
-        const auto start2 = std::chrono::steady_clock::now();
-        processSignal(*q, defaults);
-        const double defaultPercent = 100.0 * std::chrono::duration<double>(std::chrono::steady_clock::now() - start2).count() / seconds;
+        double percentOfOneCore = 1.0e9, defaultPercent = 1.0e9;
+        for (int attempt = 0; attempt < 3; ++attempt)
+        {
+            auto signal = sine(220.0, 0.4f, (int)sr * seconds);
+            const auto start = std::chrono::steady_clock::now();
+            processSignal(*p, signal);
+            percentOfOneCore = std::min(percentOfOneCore, 100.0 * std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count() / seconds);
+
+            auto defaults = sine(220.0, 0.4f, (int)sr * seconds);
+            const auto start2 = std::chrono::steady_clock::now();
+            processSignal(*q, defaults);
+            defaultPercent = std::min(defaultPercent, 100.0 * std::chrono::duration<double>(std::chrono::steady_clock::now() - start2).count() / seconds);
+        }
 
         logMessage("CPU at 48 kHz stereo: every module on = " + juce::String(percentOfOneCore, 2)
                    + "% of one core, default sound = " + juce::String(defaultPercent, 2) + "%");

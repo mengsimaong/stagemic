@@ -16,6 +16,7 @@ target_sources(
     FilterInstanceTests.cpp
     ChainTests.cpp
     TuneTests.cpp
+    UiTests.cpp
     TestHelpers.h
 )
 stagemic_configure_juce_target(stagemic_tests)

@@ -15,26 +15,9 @@ bool isSendModule(ModuleId id)
 
 constexpr float arrowW = 12.0f;
 
-// Module families, each with its own colour stripe.
 juce::Colour familyColour(ModuleId id)
 {
-    switch (id)
-    {
-        case ModuleId::Gate:
-        case ModuleId::Equalizer:
-        case ModuleId::Leveler: return juce::Colour(0xff6aa9ff);   // clean-up
-        case ModuleId::Compressor:
-        case ModuleId::Multiband: return juce::Colour(0xffffb454); // dynamics
-        case ModuleId::Saturation:
-        case ModuleId::Exciter: return juce::Colour(0xffff6fae);   // color
-        case ModuleId::DeEsser: return juce::Colour(0xffb48cff);   // de-ess
-        case ModuleId::Chorus:
-        case ModuleId::Delay:
-        case ModuleId::Reverb: return juce::Colour(0xff3ddc97);    // space
-        case ModuleId::Limiter: return juce::Colour(0xffff5470);   // safety
-        case ModuleId::Tune: return juce::Colour(0xfff5d547);      // pitch
-    }
-    return theme::dimText;
+    return theme::family(id);
 }
 
 juce::String familyName(ModuleId id)
@@ -284,9 +267,9 @@ void ChainBar::paint(juce::Graphics& g)
 
         // On/off square.
         const auto led = ledBounds(i);
-        g.setColour(on ? theme::accent : theme::background);
+        g.setColour(on ? family : theme::background);
         g.fillRoundedRectangle(led, 2.0f);
-        g.setColour(on ? theme::accent : theme::faintText);
+        g.setColour(on ? family : theme::faintText);
         g.drawRoundedRectangle(led, 2.0f, 1.0f);
 
         g.setColour(on ? theme::text : theme::faintText);

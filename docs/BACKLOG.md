@@ -1,5 +1,19 @@
 # Backlog: known issues and planned work
 
+## The performance rule (every change is held to this)
+* **Simple mode is the light one**: for a beginner on a low-end PC. Nothing may make it heavier.
+* **Advanced mode is the power-user one**: anything that costs more lives there, or is off by default
+  and costs nothing until it is used (the two extra EQ bells are skipped entirely at 0 dB; filters
+  only glide while a setting is moving; the spectrum only runs while it is on screen).
+* **Never slower than the last release.** Before releasing, build the last release's tag next to the
+  new code and compare on the same machine:
+  * audio: `stagemic_bench <voice.wav> 6 cost` on both (each module alone and every preset, best of 5);
+  * window: `STAGEMIC_UI_LIVE=simple` (with `STAGEMIC_UI_PRESET=clean` and without) and
+    `STAGEMIC_UI_LIVE=1` on both test programs.
+  Anything slower gets fixed or made optional before it ships. (Nov 2026, against 0.4.1: audio within
+  noise on every module and preset; Simple window equal with Tune off and about a third lighter with
+  Tune on; Advanced window not slower.)
+
 Things to fix or build, most important first. Add what testers report (with the preset, what it
 sounded like and roughly when) under the matching item.
 
