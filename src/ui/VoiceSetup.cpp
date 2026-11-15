@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 #include "ui/VoiceSetup.h"
 
+#include "core/presets/PresetManager.h"
+
 #include "ui/Theme.h"
 
 namespace stagemic
@@ -21,6 +23,18 @@ VoiceSetup::VoiceSetup(StageMicProcessor& p)
         addAndMakeVisible(b);
     primary.getProperties().set("primary", true);
     primary.setColour(juce::TextButton::textColourOffId, juce::Colours::white);
+    for (int i = 0; i < 3; ++i)
+    {
+        auto& b = useButtons[i];
+        b.setButtonText(uses[i].label);
+        b.getProperties().set("accentToggle", true);
+        b.setTooltip(juce::String("Starts you on the \"") + uses[i].preset + "\" preset (you can change it any time)");
+        b.onClick = [this, i] {
+            chosenUse = chosenUse == i ? -1 : i; // click again to unpick
+            showUseChoice(true);
+        };
+        addChildComponent(b);
+    }
     setStep(Step::Intro);
 }
 
@@ -44,9 +58,19 @@ void VoiceSetup::openWelcome()
     setStep(Step::Intro);
 }
 
+void VoiceSetup::showUseChoice(bool show)
+{
+    for (int i = 0; i < 3; ++i)
+    {
+        useButtons[i].setVisible(show);
+        useButtons[i].setToggleState(i == chosenUse, juce::dontSendNotification);
+    }
+}
+
 void VoiceSetup::close()
 {
     welcome = false;
+    showUseChoice(false);
     processor.getVoiceAnalyzer().cancel();
     setVisible(false);
 }
@@ -57,6 +81,7 @@ void VoiceSetup::setStep(Step s)
     tertiary.setVisible(false);
     primary.setVisible(true);
     secondary.setVisible(true);
+    showUseChoice(welcome && step != Step::Measuring);
 
     switch (step)
     {
@@ -78,6 +103,9 @@ void VoiceSetup::setStep(Step s)
             {
                 primary.setButtonText("Apply");
                 primary.onClick = [this] {
+                    // First time: the preset for what they mostly do, then their mic settings.
+                    if (welcome && chosenUse >= 0)
+                        processor.getPresetManager().loadFactoryPreset(uses[chosenUse].preset);
                     processor.applyVoiceSetup(result);
                     close();
                 };
@@ -136,11 +164,21 @@ juce::StringArray VoiceSetup::describe(const VoiceAnalyzer::Result& r, float cur
 
 juce::Rectangle<int> VoiceSetup::card() const
 {
-    return getLocalBounds().withSizeKeepingCentre(560, 330);
+    return getLocalBounds().withSizeKeepingCentre(560, welcome ? 368 : 330);
 }
 
 void VoiceSetup::resized()
 {
+    // First time: the three "what do you mostly do" choices, above the main buttons.
+    {
+        auto row = card().reduced(24).withTrimmedBottom(46).removeFromBottom(32);
+        const int w = (row.getWidth() - 16) / 3;
+        for (auto& b : useButtons)
+        {
+            b.setBounds(row.removeFromLeft(w));
+            row.removeFromLeft(8);
+        }
+    }
     auto buttons = card().reduced(24).removeFromBottom(34);
     primary.setBounds(buttons.removeFromRight(120));
     buttons.removeFromRight(8);
@@ -178,7 +216,7 @@ void VoiceSetup::paint(juce::Graphics& g)
         bodyText("Takes about 11 seconds. Use the mic and position you stream with.", 14.0f, theme::dimText);
         area.removeFromTop(6);
         bodyText("1.  Stay quiet for 3 seconds (it listens to the room).");
-        bodyText("2.  Then sing or talk like on stream for 8 seconds,");
+        bodyText(welcome ? "2.  Then sing, talk or whisper like on stream for 8 seconds," : "2.  Then sing or talk like on stream for 8 seconds,");
         {
             const auto full = area;
             area.removeFromLeft(22);
@@ -187,7 +225,16 @@ void VoiceSetup::paint(juce::Graphics& g)
         }
         area.removeFromTop(8);
         bodyText("It sets Input Gain, the Gate and the De-Ess frequency for your mic.", 13.0f, theme::dimText);
-        bodyText("Your preset's sound stays the same.", 13.0f, theme::dimText);
+        bodyText(welcome ? "Pick what you mostly do, and it picks a preset for that too." : "Your preset's sound stays the same.", 13.0f,
+                 theme::dimText);
+        if (welcome) // right above its three buttons
+        {
+            g.setColour(theme::text);
+            g.setFont(theme::font(13.5f, true));
+            g.drawText("What do you mostly do on stream?",
+                       juce::Rectangle<int>(useButtons[0].getX(), useButtons[0].getY() - 26, useButtons[2].getRight() - useButtons[0].getX(), 22),
+                       juce::Justification::centredLeft);
+        }
         return;
     }
 

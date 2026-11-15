@@ -4,6 +4,8 @@
 #include "TestHelpers.h"
 #include "core/dsp/Tune.h"
 
+#include <juce_dsp/juce_dsp.h>
+
 #include <chrono>
 #include <cmath>
 #include <functional>
@@ -375,6 +377,66 @@ public:
             expectWithinAbsoluteError(down.first, 60.0, 0.06, "pitch unchanged (formant down)");
             expectGreaterThan(up.second, normal.second + 1.0, "formant up sounds smaller/brighter");
             expectLessThan(down.second, normal.second - 1.0, "formant down sounds bigger/darker");
+        }
+
+        beginTest("Formant (fun voices): breaths and \"s\" sounds get the same shift as the voice");
+        {
+            // A hiss (an "s"): brightness measured as the energy-weighted centre frequency.
+            auto centroid = [](const juce::AudioBuffer<float>& b, int from, int count) {
+                juce::dsp::FFT fft(12);
+                const int size = 1 << 12;
+                double num = 0.0, den = 0.0;
+                std::vector<float> data((size_t)size * 2);
+                for (int start = from; start + size <= from + count; start += size)
+                {
+                    std::fill(data.begin(), data.end(), 0.0f);
+                    for (int i = 0; i < size; ++i)
+                        data[(size_t)i] = b.getSample(0, start + i) * (0.5f - 0.5f * std::cos(2.0f * juce::MathConstants<float>::pi * (float)i / (float)size));
+                    fft.performFrequencyOnlyForwardTransform(data.data());
+                    // Within 200 Hz .. 12 kHz, so content near the top of the range
+                    // (which the shift can push out) doesn't skew it.
+                    for (int k = 1; k < size / 2; ++k)
+                    {
+                        const double f = (double)k * kRate / size;
+                        if (f < 200.0 || f > 12000.0)
+                            continue;
+                        num += std::log(f) * (double)data[(size_t)k] * data[(size_t)k];
+                        den += (double)data[(size_t)k] * data[(size_t)k];
+                    }
+                }
+                return std::exp(num / den); // energy-weighted centre on a log scale
+            };
+            auto hiss = [] {
+                juce::AudioBuffer<float> b(2, (int)kRate * 2);
+                juce::Random rng(17);
+                dsp::Biquad band;
+                band.c = dsp::biquad::bandPass(kRate, 3000.0, 0.7);
+                for (int i = 0; i < b.getNumSamples(); ++i)
+                {
+                    const float v = band.process(0.2f * (rng.nextFloat() * 2.0f - 1.0f), 0);
+                    b.setSample(0, i, v);
+                    b.setSample(1, i, v);
+                }
+                return b;
+            };
+            const auto dry = hiss();
+            const double dryCentre = centroid(dry, (int)kRate / 2, (int)kRate);
+            for (float formant : {4.0f, -5.0f})
+            {
+                auto p = tuneProcessor(20.0f);
+                setParam(*p, pid::tuneFormant, formant);
+                p->getChain().requestSnap();
+                auto b = hiss();
+                processSignal(*p, b);
+                const double ratio = centroid(b, (int)kRate / 2, (int)kRate) / dryCentre;
+                const double expected = std::pow(2.0, formant / 12.0);
+                logMessage("formant " + juce::String(formant, 0) + " st: hiss brightness x" + juce::String(ratio, 2) + " (voice x"
+                           + juce::String(expected, 2) + ")");
+                expectWithinAbsoluteError(ratio, expected, 0.12, "the hiss moves with the voice");
+                const float level = juce::Decibels::gainToDecibels(b.getRMSLevel(0, (int)kRate / 2, (int)kRate) / dry.getRMSLevel(0, (int)kRate / 2, (int)kRate));
+                expectWithinAbsoluteError(level, 0.0f, 3.0f, "and keeps its level");
+                expect(allFinite(b));
+            }
         }
 
         beginTest("Level is kept, and breaths/noise pass through untouched (just delayed)");

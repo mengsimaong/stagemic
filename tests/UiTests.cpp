@@ -3,6 +3,7 @@
 // components inside the full editor (no screen needed).
 #include "TestHelpers.h"
 #include "ui/Displays.h"
+#include "ui/MasterPanel.h"
 #include "ui/StageMicEditor.h"
 #include "core/presets/PresetManager.h"
 
@@ -73,6 +74,58 @@ public:
                                                             {pid::eqHiMidFreq, pid::eqHiMidGain},
                                                             {pid::eqHighFreq, pid::eqHighGain},
                                                             {pid::eqTameFreq, pid::eqTameRange}};
+
+        beginTest("Before / After: holding gives the untouched mic, letting go brings StageMic back, no clicks");
+        {
+            auto p = makeProcessor();
+            p->getPresetManager().loadFactoryPreset("Karaoke Star");
+            p->getChain().requestSnap();
+            auto voice = sine(220.0, 0.1f, 48000 * 3);
+            const auto dry = voice;
+            juce::MidiBuffer midi;
+            for (int start = 0; start < voice.getNumSamples(); start += 480)
+            {
+                const double t = start / 48000.0;
+                p->setHearBefore(t >= 1.0 && t < 2.0); // held during the middle second
+                juce::AudioBuffer<float> view(voice.getArrayOfWritePointers(), 2, start, 480);
+                p->processBlock(view, midi);
+            }
+            // Held (after the 15 ms fade): exactly the mic.
+            float worst = 0.0f;
+            for (int i = 48000 + 2400; i < 96000; ++i)
+                worst = std::max(worst, std::abs(voice.getSample(0, i) - dry.getSample(0, i)));
+            expectLessThan(worst, 1.0e-6f, "while held: the untouched mic");
+            // Let go: StageMic is back (Karaoke Star is clearly louder and different).
+            float diff = 0.0f;
+            for (int i = 96000 + 4800; i < 144000; ++i)
+                diff = std::max(diff, std::abs(voice.getSample(0, i) - dry.getSample(0, i)));
+            expectGreaterThan(diff, 0.01f, "after letting go: processed again");
+            // No jumps at the switches bigger than the tone's own sample-to-sample steps.
+            float maxStep = 0.0f;
+            for (int i = 1; i < voice.getNumSamples(); ++i)
+                maxStep = std::max(maxStep, std::abs(voice.getSample(0, i) - voice.getSample(0, i - 1)));
+            expectLessThan(maxStep, 0.2f, "fades in and out without clicks");
+        }
+
+        beginTest("Level advice: plain words for clipping, too loud, too quiet, no sound and good");
+        {
+            APVTS* state = nullptr;
+            auto p = makeProcessor();
+            state = &p->getParameters();
+            MasterPanel panel(*state);
+            auto feed = [&](float in, float out, int ticks) {
+                for (int i = 0; i < ticks; ++i)
+                    panel.setLevels(in, out);
+                return panel.getAdvice();
+            };
+            expectEquals(feed(0.0f, 0.0f, 100), juce::String("No sound from the mic"));
+            expectEquals(feed(0.02f, 0.03f, 100), juce::String("Too quiet: try Set up my voice"));
+            expectEquals(feed(0.3f, 0.5f, 100), juce::String("Level is good"));
+            expectEquals(feed(1.0f, 0.5f, 1), juce::String("Mic is clipping: turn its gain down"));
+            expectEquals(feed(0.3f, 0.5f, 30), juce::String("Mic is clipping: turn its gain down"), "an alarm stays up long enough to read");
+            expectEquals(feed(0.3f, 0.5f, 60), juce::String("Level is good"), "then clears");
+            expectEquals(feed(0.3f, 0.98f, 1), juce::String("Too loud: turn Output down"));
+        }
 
         beginTest("EQ graph: dragging a point changes only that point's settings (every preset, every point)");
         for (const auto& preset : PresetManager::getFactoryPresetNames())
@@ -149,6 +202,59 @@ public:
             spot = eq->getNodePosition(0);
             drag(*eq, spot, {spot.translated(-40.0f, 0.0f)});
             expectLessThan(getParam(*p, pid::eqLowCut), 110.0f, "point 1 moves when grabbed on its own");
+        }
+
+        beginTest("EQ: switching points on and off while singing doesn't click, and all off = no EQ");
+        {
+            auto p = makeProcessor();
+            onlyModule(*p, ModuleId::Equalizer);
+            setParam(*p, pid::eqPlosive, 0.0f);
+            setParam(*p, pid::eqLowGain, 6.0f);
+            setParam(*p, pid::eqMidGain, -6.0f);
+            setParam(*p, pid::eqHighGain, 8.0f);
+            setParam(*p, pid::eqLoMidGain, 5.0f);
+            setParam(*p, pid::eqHiMidGain, -5.0f);
+            p->getChain().requestSnap();
+            auto tone = sine(150.0, 0.2f, 48000 * 4);
+            juce::MidiBuffer midi;
+            for (int start = 0, block = 0; start < tone.getNumSamples(); start += 480, ++block)
+            {
+                if (block >= 100 && block % 5 == 0) // a switch flicked every 50 ms
+                    setParam(*p, pid::eqPointOn[(block / 5) % 6], ((block / 30) % 2) ? 1.0f : 0.0f);
+                juce::AudioBuffer<float> view(tone.getArrayOfWritePointers(), 2, start, 480);
+                p->processBlock(view, midi);
+            }
+            dsp::Biquad hp1, hp2;
+            hp1.c = dsp::biquad::highpass(48000.0, 5000.0, 0.54119610);
+            hp2.c = dsp::biquad::highpass(48000.0, 5000.0, 1.30656296);
+            double high = 0.0, all = 0.0;
+            for (int i = 0; i < tone.getNumSamples(); ++i)
+            {
+                const float x = tone.getSample(0, i), y = hp2.process(hp1.process(x, 0), 0);
+                if (i < 48000)
+                    continue;
+                high += (double)y * y;
+                all += (double)x * x;
+            }
+            const double noise = 10.0 * std::log10(high / all + 1.0e-20);
+            logMessage("switches flicked while singing: noise above 5 kHz " + juce::String(noise, 1) + " dB");
+            expectLessThan(noise, -60.0, "no clicks");
+
+            // Every point off: the EQ leaves the sound exactly as it is.
+            auto q = makeProcessor();
+            onlyModule(*q, ModuleId::Equalizer);
+            setParam(*q, pid::eqPlosive, 0.0f);
+            setParam(*q, pid::eqHighGain, 8.0f);
+            for (int point = 0; point < 7; ++point)
+                setParam(*q, pid::eqPointOn[point], 0.0f);
+            q->getChain().requestSnap();
+            auto voice = sine(220.0, 0.2f, 48000);
+            const auto before = voice;
+            processSignal(*q, voice);
+            float worst = 0.0f;
+            for (int i = 0; i < voice.getNumSamples(); ++i)
+                worst = std::max(worst, std::abs(voice.getSample(0, i) - before.getSample(0, i)));
+            expectEquals(worst, 0.0f, "all points off: bit-exact");
         }
 
         beginTest("EQ: the two extra bells at 0 dB are not in the sound at all, and work when used");
@@ -257,10 +363,14 @@ public:
                 auto p = makeProcessor();
                 onlyModule(*p, ModuleId::Equalizer);
                 if (round > 0) // round 0: the default EQ; then random settings
+                {
                     for (auto* id : {pid::eqLowCut, pid::eqLowFreq, pid::eqLowGain, pid::eqMidFreq, pid::eqMidGain, pid::eqMidQ,
                                      pid::eqLoMidFreq, pid::eqLoMidGain, pid::eqLoMidQ, pid::eqHiMidFreq, pid::eqHiMidGain, pid::eqHiMidQ,
                                      pid::eqHighFreq, pid::eqHighGain, pid::eqLowCutSlope})
                         p->getParameters().getParameter(id)->setValueNotifyingHost(rng.nextFloat());
+                    for (int point = 0; point < 6; ++point) // about one in three points switched off
+                        setParam(*p, pid::eqPointOn[point], rng.nextFloat() < 0.33f ? 0.0f : 1.0f);
+                }
                 setParam(*p, pid::eqPlosive, 0.0f);   // these two react to the voice,
                 setParam(*p, pid::eqTameRange, 0.0f); // they aren't part of the fixed curve
                 p->setAdvancedMode(true);

@@ -34,6 +34,17 @@ const std::vector<FactoryPreset> factoryPresets = {
         {pid::revOn, 0.0f},
     }},
 
+    // Whispering and soft close-mic sounds: no gate (it would cut soft whispers), no
+    // reverb, gentle levelling and compression, a light de-esser, firmer pop control.
+    {"ASMR", {
+        {pid::gateOn, 0.0f},
+        {pid::eqLowCut, 50.0f}, {pid::eqLowCutSlope, 0.0f}, {pid::eqPlosive, 80.0f}, {pid::eqHighGain, 1.0f},
+        {pid::dsThreshold, -34.0f}, {pid::dsRange, 4.0f},
+        {pid::compThreshold, -32.0f}, {pid::compRatio, 2.0f}, {pid::compAttack, 15.0f}, {pid::compMakeup, 3.0f},
+        {pid::levTarget, -22.0f}, {pid::levRange, 12.0f},
+        {pid::revOn, 0.0f},
+    }},
+
     {"Karaoke Star", {
         {pid::eqTameRange, 4.0f}, {pid::eqHighGain, 3.0f}, {pid::eqMidFreq, 3000.0f}, {pid::eqMidGain, 1.5f},
         {pid::compRatio, 4.0f}, {pid::compThreshold, -22.0f}, {pid::compMakeup, 6.0f},

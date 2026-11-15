@@ -50,6 +50,8 @@ inline constexpr const char* levSpeed = "lev_speed";
 
 // Equalizer
 inline constexpr const char* eqOn = "eq_on";
+// One on/off switch per EQ point (1 = Low Cut ... 7 = Tame), for hearing what each one does.
+inline constexpr const char* eqPointOn[7] = {"eq_p1_on", "eq_p2_on", "eq_p3_on", "eq_p4_on", "eq_p5_on", "eq_p6_on", "eq_p7_on"};
 inline constexpr const char* eqLowCut = "eq_lowcut";
 inline constexpr const char* eqLowCutSlope = "eq_lowcut_slope"; // 0 = 12 dB/oct, 1 = 24 dB/oct
 inline constexpr const char* eqLowFreq = "eq_low_freq";

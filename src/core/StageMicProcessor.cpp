@@ -53,6 +53,8 @@ void StageMicProcessor::prepareToPlay(double sampleRate, int maximumExpectedSamp
     voiceAnalyzer.prepare(sampleRate);
 
     safetyEnvelope = 0.0f;
+    beforeMix = 0.0f;
+    beforeStep = (float)(1.0 / (0.015 * sampleRate)); // 15 ms fade
     sideEnergy[0] = sideEnergy[1] = 0.0f;
     oneSidedSamples = 0;
     mirrorFrom = -1;
@@ -120,6 +122,12 @@ void StageMicProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mid
             ptrs[c] = buffer.getWritePointer(c, offset);
 
         dsp::scrubNonFinite(ptrs, numChannels, n);
+        // Before / After: keep the untouched mic (only while it's wanted or fading).
+        const bool wantBefore = hearBefore.load(std::memory_order_relaxed);
+        const bool mixBefore = wantBefore || beforeMix > 0.0f;
+        if (mixBefore)
+            for (int c = 0; c < numChannels; ++c)
+                juce::FloatVectorOperations::copy(dryCopy[c], ptrs[c], n);
         if (chain.anyModuleActive()) // never touch audio StageMic isn't processing
             fixOneSidedMic(ptrs, numChannels, n);
         voiceAnalyzer.push(ptrs, numChannels, n); // raw mic, before Input Gain
@@ -139,6 +147,16 @@ void StageMicProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mid
             for (int c = 0; c < numChannels; ++c)
                 juce::FloatVectorOperations::clear(ptrs[c], n);
             chain.requestSnap();
+        }
+        if (mixBefore)
+        {
+            const float target = wantBefore ? 1.0f : 0.0f;
+            for (int i = 0; i < n; ++i)
+            {
+                beforeMix = target > beforeMix ? juce::jmin(target, beforeMix + beforeStep) : juce::jmax(target, beforeMix - beforeStep);
+                for (int c = 0; c < numChannels; ++c)
+                    ptrs[c][i] += beforeMix * (dryCopy[c][i] - ptrs[c][i]);
+            }
         }
         outPeak = juce::jmax(outPeak, peakOf(ptrs, numChannels, n));
         spectrum.push(ptrs, numChannels, n);

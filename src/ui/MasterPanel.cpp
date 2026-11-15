@@ -26,16 +26,86 @@ MasterPanel::MasterPanel(APVTS& s)
         repaint(levelArea);
     };
     for (auto* c : std::initializer_list<juce::Component*>{&inMeter, &outMeter, &levelPower, &levelTarget, &levelRange,
-                                                           &levelSpeed, &inGain, &outGain})
+                                                           &levelSpeed, &inGain, &outGain, &beforeButton})
         addAndMakeVisible(c);
+    beforeButton.setTooltip("Hold to hear your mic without StageMic, let go to hear it with. (Your stream hears it too.)");
+    beforeButton.onStateChange = [this] {
+        const bool down = beforeButton.isDown();
+        if (down != beforeDown)
+        {
+            beforeDown = down;
+            beforeButton.setButtonText(down ? "Hearing: before" : "Hold: hear before");
+            if (onHearBefore)
+                onHearBefore(down);
+        }
+    };
 }
 
 void MasterPanel::setLevelerGain(float db)
 {
-    if (std::abs(db - levelerDb) >= 0.1f) // the read-out shows one decimal
+    if (juce::roundToInt(db) != juce::roundToInt(levelerDb)) // the read-out shows whole dB
     {
         levelerDb = db;
         repaint(levelArea.withHeight(24));
+    }
+}
+
+void MasterPanel::updateAdvice(float inPeak, float outPeak)
+{
+    // Plain-words advice from the last 4 seconds. Alarms (clipping, too loud) stay up
+    // for 3 seconds so they can be read.
+    recentIn[(size_t)adviceTick] = inPeak;
+    recentOut[(size_t)adviceTick] = outPeak;
+    adviceTick = (adviceTick + 1) % kAdviceTicks;
+    float inMax = 0.0f, outMax = 0.0f;
+    for (int i = 0; i < kAdviceTicks; ++i)
+    {
+        inMax = juce::jmax(inMax, recentIn[(size_t)i]);
+        outMax = juce::jmax(outMax, recentOut[(size_t)i]);
+    }
+
+    juce::String text;
+    juce::Colour colour;
+    if (inPeak >= 0.989f) // -0.1 dBFS: the mic itself is overloading, before StageMic
+    {
+        text = "Mic is clipping: turn its gain down";
+        alarmHold = 60;
+    }
+    else if (outPeak >= 0.97f)
+    {
+        text = "Too loud: turn Output down";
+        alarmHold = 60;
+    }
+    if (text.isNotEmpty() || alarmHold > 0)
+    {
+        if (text.isEmpty())
+        {
+            --alarmHold;
+            text = advice; // keep showing the alarm
+        }
+        colour = theme::meterRed;
+    }
+    else if (inMax < 1.0e-4f)
+    {
+        text = "No sound from the mic";
+        colour = theme::dimText;
+    }
+    else if (outMax < 0.063f) // under -24 dBFS at its loudest
+    {
+        text = "Too quiet: try Set up my voice";
+        colour = theme::reduction;
+    }
+    else
+    {
+        text = "Level is good";
+        colour = theme::meterGreen.withAlpha(0.85f);
+    }
+
+    if (text != advice || colour != adviceColour)
+    {
+        advice = text;
+        adviceColour = colour;
+        repaint(adviceArea);
     }
 }
 
@@ -43,6 +113,7 @@ void MasterPanel::setLevels(float inPeak, float outPeak)
 {
     inMeter.setLevel(inPeak);
     outMeter.setLevel(outPeak);
+    updateAdvice(inPeak, outPeak);
 
     // Numeric peak read-outs hold the highest value for ~2 s.
     const float inDb = juce::Decibels::gainToDecibels(inPeak, -100.0f);
@@ -115,10 +186,16 @@ void MasterPanel::paint(juce::Graphics& g)
     if (levelOn)
     {
         g.setColour(std::abs(levelerDb) < 0.05f ? theme::dimText : theme::reduction);
-        g.setFont(theme::font(11.5f, true));
-        g.drawText((levelerDb > 0.0f ? "+" : "") + juce::String(levelerDb, 1) + " dB",
+        g.setFont(theme::font(10.5f, false));
+        // In words: which way it's turning the voice right now.
+        const int amount = juce::roundToInt(std::abs(levelerDb));
+        g.drawText(amount == 0 ? juce::String("steady") : (levelerDb > 0.0f ? "up " : "down ") + juce::String(amount) + " dB",
                    la.withHeight(24.0f).withTrimmedRight(8.0f), juce::Justification::centredRight);
     }
+
+    g.setColour(adviceColour);
+    g.setFont(theme::font(11.5f, true));
+    g.drawFittedText(advice, adviceArea, juce::Justification::centred, 2, 0.85f);
 
     g.setColour(theme::dimText);
     g.setFont(theme::font(11.0f));
@@ -140,7 +217,11 @@ void MasterPanel::resized()
     levelTarget.setBounds(levelKnobs.removeFromLeft(lw).withSizeKeepingCentre(juce::jmin(lw, 60), 76));
     levelRange.setBounds(levelKnobs.removeFromLeft(lw).withSizeKeepingCentre(juce::jmin(lw, 60), 76));
     levelSpeed.setBounds(levelKnobs.withSizeKeepingCentre(juce::jmin(lw, 60), 76));
-    area.removeFromBottom(10);
+    area.removeFromBottom(8);
+    beforeButton.setBounds(area.removeFromBottom(28));
+    area.removeFromBottom(4);
+    adviceArea = area.removeFromBottom(30);
+    area.removeFromBottom(2);
 
     meterArea = area;
     const int meterW = 30;

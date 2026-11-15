@@ -49,6 +49,7 @@ StageMicEditor::StageMicEditor(StageMicProcessor& p)
     content.addChildComponent(simple);
     content.addAndMakeVisible(cat);
     content.addChildComponent(flash);
+    master.onHearBefore = [this](bool on) { processor.setHearBefore(on); };
     presetBar.onModeChanged = [this](bool advanced) {
         processor.setAdvancedMode(advanced);
         applyMode(advanced);
@@ -112,6 +113,7 @@ StageMicEditor::StageMicEditor(StageMicProcessor& p)
 StageMicEditor::~StageMicEditor()
 {
     stopTimer();
+    processor.setHearBefore(false); // never leave "before" on when the window goes
     setLookAndFeel(nullptr);
 }
 

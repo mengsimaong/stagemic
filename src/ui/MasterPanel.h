@@ -15,6 +15,10 @@ public:
     void setLevels(float inPeak, float outPeak);
     void setLevelerGain(float db);
     void setStatus(const juce::String& text);
+    /** Called with true while "Hold: hear before" is held down, false when let go. */
+    std::function<void(bool)> onHearBefore;
+    /** The plain-words level advice currently shown (for the tests). */
+    const juce::String& getAdvice() const noexcept { return advice; }
     void paint(juce::Graphics&) override;
     void resized() override;
 
@@ -30,6 +34,17 @@ private:
     float inPeakDb = -100.0f, outPeakDb = -100.0f;
     int peakHoldTicks = 0;
     juce::Rectangle<int> meterArea;
+
+    // Before / After, and plain-words level advice under the meters.
+    juce::TextButton beforeButton{"Hold: hear before"};
+    bool beforeDown = false;
+    static constexpr int kAdviceTicks = 80; // 4 s at 20 updates a second
+    std::array<float, kAdviceTicks> recentIn{}, recentOut{};
+    int adviceTick = 0, alarmHold = 0;
+    juce::String advice;
+    juce::Colour adviceColour;
+    juce::Rectangle<int> adviceArea;
+    void updateAdvice(float inPeak, float outPeak);
 };
 
 } // namespace stagemic

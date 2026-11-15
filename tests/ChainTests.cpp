@@ -1062,6 +1062,71 @@ private:
             }
         }
 
+        beginTest("ASMR preset: a soft whisper is never chopped (no gate), and comes out at a usable level");
+        {
+            auto p = makeProcessor();
+            expect(p->getPresetManager().loadFactoryPreset("ASMR"));
+            expectLessThan(getParam(*p, pid::gateOn), 0.5f, "no gate");
+            expectLessThan(getParam(*p, pid::revOn), 0.5f, "no reverb");
+            p->getChain().requestSnap();
+            // A whisper: breathy noise around -50 dBFS RMS, with soft swells.
+            juce::AudioBuffer<float> whisper(2, 48000 * 6);
+            juce::Random rng(23);
+            dsp::Biquad shape;
+            shape.c = dsp::biquad::bandPass(48000.0, 2500.0, 0.8);
+            for (int i = 0; i < whisper.getNumSamples(); ++i)
+            {
+                const double t = i / 48000.0;
+                const float swell = 0.6f + 0.4f * (float)std::sin(2.0 * juce::MathConstants<double>::pi * 0.7 * t);
+                const float v = shape.process(0.012f * swell * (rng.nextFloat() * 2.0f - 1.0f), 0);
+                whisper.setSample(0, i, v);
+                whisper.setSample(1, i, v);
+            }
+            // What "Set up my voice" would do with a whisper this quiet: raise Input Gain.
+            const auto input = whisper;
+            juce::AudioBuffer<float> setupRun(input);
+            p->getVoiceAnalyzer().start();
+            {
+                juce::AudioBuffer<float> quiet(2, 48000 * 3 + 2400);
+                quiet.clear();
+                processSignal(*p, quiet);
+                processSignal(*p, setupRun);
+                juce::AudioBuffer<float> more(input);
+                processSignal(*p, more);
+            }
+            const auto r = VoiceAnalyzer::evaluate(p->getVoiceAnalyzer().getMeasurements());
+            expect(r.heardVoice, "Set up my voice hears a whisper");
+            p->applyVoiceSetup(r);
+            logMessage("whisper setup: input gain " + juce::String(r.inputGainDb, 1) + " dB");
+            p->getChain().requestSnap();
+
+            processSignal(*p, whisper);
+            // The gain the preset applies, window by window (50 ms), after it has settled. A gate
+            // (or anything that chops) turns the quietest parts down more than the loudest;
+            // evening-out (compressor, Auto Level) does the opposite, which is what we want.
+            std::vector<std::pair<float, float>> windows; // input level, gain
+            float loudest = 0.0f;
+            for (int start = 96000; start + 2400 <= whisper.getNumSamples(); start += 2400)
+            {
+                const float in = input.getRMSLevel(0, start, 2400), out = whisper.getRMSLevel(0, start, 2400);
+                windows.push_back({in, out / std::max(1.0e-9f, in)});
+                loudest = std::max(loudest, out);
+            }
+            std::sort(windows.begin(), windows.end());
+            const size_t quarter = windows.size() / 4;
+            float quietGain = 0.0f, loudGain = 0.0f;
+            for (size_t i = 0; i < quarter; ++i)
+            {
+                quietGain += windows[i].second / (float)quarter;
+                loudGain += windows[windows.size() - 1 - i].second / (float)quarter;
+            }
+            const float difference = juce::Decibels::gainToDecibels(quietGain / loudGain);
+            logMessage("whisper: quietest quarter gets " + juce::String(difference, 1) + " dB more gain than the loudest; loudest "
+                       + juce::String(juce::Decibels::gainToDecibels(loudest), 1) + " dBFS");
+            expectGreaterThan(difference, -1.0f, "soft parts are never turned down (no gate, no chopping)");
+            expectGreaterThan(juce::Decibels::gainToDecibels(loudest), -30.0f, "brought up to a usable level");
+        }
+
         beginTest("Output never passes 0 dBFS, even with Output +24 dB and the Limiter off");
         {
             auto p = makeProcessor();

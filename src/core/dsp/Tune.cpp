@@ -264,9 +264,15 @@ void Tune::detect() noexcept
     // a consonant) must never become a note. A new pitch counts only once two
     // readings in a row agree on it; meanwhile the previous note is held.
     auto semitonesApart = [](float p1, float p2) { return std::abs(12.0f * std::log2(p1 / p2)); };
-    if (!voiced && confirmed > 0.0f && misses < 2)
+    // How long to hold through unclear readings: about 5 ms normally. With a one-note
+    // scale (the Robot voice) about 55 ms, so breathy or rough moments keep the robot
+    // drone instead of letting the real voice through (true silence still ends it).
+    const auto mask = scaleMasks[(size_t)scale];
+    const bool oneNote = mask != 0 && (mask & (mask - 1)) == 0;
+    const int maxMisses = oneNote ? 20 : 2;
+    if (!voiced && confirmed > 0.0f && misses < maxMisses)
     {
-        // One or two unclear readings inside a sung note (a breathy moment): hold the
+        // Unclear readings inside a sung note (a breathy moment): hold the
         // note instead of flickering between "voice" and "breath".
         ++misses;
         period = confirmed;
@@ -461,7 +467,14 @@ void Tune::emitGrain() noexcept
     {
         // Breath, "s", silence: rebuild the voice as it is, continuing from wherever the
         // last voiced grain read (so there's no jump), easing back to "no offset".
-        addGrain(nextGrain, nextGrain + readOffset, unvoicedHalf, unvoicedHalf, 1.0f);
+        // With a formant shift (the fun voices), these get the same shift as the sung
+        // parts, so an "s" or a breath sounds like it comes from the same changed voice
+        // instead of the original one. At 0 (every other preset) it's an exact copy.
+        const double source = nextGrain + readOffset;
+        float scale = formantRatio;
+        if (scale > 1.0f) // reading faster reaches further ahead: never past what's been heard
+            scale = std::max(1.0f, std::min(scale, (float)(((double)(now - 2) - source) / (double)unvoicedHalf)));
+        addGrain(nextGrain, source, unvoicedHalf, unvoicedHalf, scale);
         readOffset -= std::clamp(readOffset, -0.1 * unvoicedHalf, 0.1 * unvoicedHalf);
         nextGrain += unvoicedHalf;
         lastGrainVoiced = false;

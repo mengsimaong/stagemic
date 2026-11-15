@@ -8,7 +8,28 @@
 
 Updating from an earlier version: just run the new installer. Your filter, its settings and your presets stay.
 
-## New in 0.4.2
+## New in 0.5.0
+
+* **Fun voices sound more like one voice:** on Chipmunk, Deep Monster, Alien and Robot, breaths and
+  "s"/"sh"/"t" sounds now get the same voice change as the singing, instead of staying in your
+  normal voice. Normal tuning presets are unchanged (bit-identical).
+* **"Hold: hear before"** under the meters: hold it to hear your mic without StageMic, let go to hear
+  it with. (Your stream hears it too while you hold it.)
+* **First time, it asks what you mostly do** on stream: Sing, Talk & game, or ASMR (whisper), and
+  starts you on a matching preset along with your mic settings.
+* **New ASMR preset:** no noise gate (soft whispers are never cut), no reverb, gentle levelling and
+  compression, a light de-esser and firmer pop control for close-mic sounds.
+* **EQ points can be switched on and off one by one** (the square on each point's chip, Advanced mode),
+  to hear what each one does. Switching glides, with no click.
+* **Lighter on the CPU:** the EQ runs more efficiently and skips any band that is flat (0 dB) or off,
+  with exactly the same sound. Everyday presets now use 1-6% less CPU than in 0.4.1.
+* **Simple mode in plainer words:** "Silence below", "Starts at", "Strength", "Amount", and Auto Level
+  says "up 3 dB" / "down 6 dB" / "steady" instead of a bare number.
+* **Robot holds its note longer** through breathy moments, so less of the normal voice slips through.
+* **Plain-words level advice** under the meters: "Level is good", "Too quiet: try Set up my voice",
+  "Mic is clipping: turn its gain down", "Too loud: turn Output down", or "No sound from the mic".
+
+## From 0.4.2
 
 * **New look:** each module family has its own colour (the same as its chip in the chain bar), pink is
   kept for the brand and the main actions; every control reads name, knob, value; Simple mode is three

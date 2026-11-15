@@ -92,6 +92,11 @@ public:
     int getEditorWidth() const noexcept { return editorWidth; }
     void setEditorWidth(int width) noexcept { editorWidth = width; }
     void clearVoiceSetup() { voiceSetupDone = false; }
+    /** "Before / After": while true, the mic is heard without StageMic (a quick fade
+        in and out, no clicks). Any thread. The stream hears it too. */
+    void setHearBefore(bool on) noexcept { hearBefore.store(on, std::memory_order_relaxed); }
+    bool isHearingBefore() const noexcept { return hearBefore.load(std::memory_order_relaxed); }
+
     /** "Set up my voice" opens by itself the first time the window opens (once). */
     bool wasVoiceSetupOffered() const noexcept { return voiceSetupOffered; }
     void setVoiceSetupOffered() noexcept { voiceSetupOffered = true; }
@@ -122,6 +127,10 @@ private:
     std::atomic<float>* outGain = nullptr;
     juce::SmoothedValue<float> inGainSmooth, outGainSmooth;
     float safetyEnvelope = 0.0f, safetyRelease = 0.9999f; // the last-line safety limiter
+    // Before / After: the untouched mic of this sub-block, and how much of it is heard (0..1).
+    std::atomic<bool> hearBefore{false};
+    float beforeMix = 0.0f, beforeStep = 0.002f;
+    float dryCopy[dsp::kMaxChannels][dsp::VocalChain::kSubBlock]{};
     // One-sided mic fix: many audio interfaces put the mic on the left channel only.
     void fixOneSidedMic(float* const* ch, int numChannels, int n) noexcept;
     float sideEnergy[2] = {}, sideSmoothing = 0.99f;

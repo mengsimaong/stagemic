@@ -100,6 +100,7 @@ private:
     juce::Point<float> nodePosition(int index) const;
     int nodeAt(juce::Point<float> p) const;
     float responseDb(float freq) const;
+    bool pointIsOn(int index) const;
     void beginGesture(int node);
     void endGesture(int node);
 
@@ -220,6 +221,8 @@ private:
     std::vector<Band> bands;
     std::vector<std::unique_ptr<FieldRow>> rows;
     std::vector<juce::Rectangle<int>> chips;
+    PowerButton pointPower[7];
+    std::vector<std::unique_ptr<APVTS::ButtonAttachment>> pointAttachments;
     std::array<float, 7> shownFreq{}, shownGain{}; // what the chips last drew
     int selected = 3, hover = -1;
 };

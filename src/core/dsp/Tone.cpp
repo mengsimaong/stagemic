@@ -29,6 +29,8 @@ Equalizer::Equalizer(juce::AudioProcessorValueTreeState& s)
     , tameRange(param(s, pid::eqTameRange))
     , plosive(param(s, pid::eqPlosive))
 {
+    for (int i = 0; i < 7; ++i)
+        pointOn[i] = param(s, pid::eqPointOn[i]);
 }
 
 void Equalizer::prepare(double sampleRate, int)
@@ -86,11 +88,24 @@ void Equalizer::setBand(Band band, const BiquadCoeffs& coeffs, bool snap) noexce
 
 void Equalizer::update(bool snap) noexcept
 {
+    // A point switched off glides its gain to 0 dB (the low cut its frequency down to
+    // 10 Hz), like turning a knob, so there's no click; there it does nothing and is
+    // skipped below.
+    bool on[7];
+    for (int i = 0; i < 7; ++i)
+        on[i] = pointOn[i] == nullptr || load(pointOn[i]) >= 0.5f;
+    constexpr float lowCutOff = 10.0f;
+
     const int newSlope = load(lowCutSlope) >= 0.5f ? 24 : 12;
-    if (sLowCut.step(load(lowCut), snap) || snap || newSlope != slope)
+    if (sLowCut.step(on[0] ? load(lowCut) : lowCutOff, snap) || snap || newSlope != slope || on[0] != pointWasOn[0])
     {
         slope = newSlope;
-        if (slope == 24)
+        if (!on[0] && sLowCut.current <= lowCutOff + 0.01f)
+        {
+            setBand(LowCut, BiquadCoeffs{}, snap); // fully off: out of the signal path
+            setBand(LowCut2, BiquadCoeffs{}, snap);
+        }
+        else if (slope == 24)
         {
             // 4th-order Butterworth: two biquads with these Qs.
             setBand(LowCut, biquad::highpass(sr, sLowCut.current, 0.54119610), snap);
@@ -102,43 +117,73 @@ void Equalizer::update(bool snap) noexcept
             setBand(LowCut2, BiquadCoeffs{}, snap); // pass-through
         }
     }
+    pointWasOn[0] = on[0];
 
     const bool lf = sLowFreq.step(load(lowFreq), snap);
-    const bool lg = sLowGain.step(load(lowGain), snap);
+    const bool lg = sLowGain.step(on[1] ? load(lowGain) : 0.0f, snap);
     if (lf || lg || snap)
         setBand(LowShelf, biquad::lowShelf(sr, sLowFreq.current, sLowGain.current), snap);
 
-    const bool mf = sMidFreq.step(load(midFreq), snap);
-    const bool mg = sMidGain.step(load(midGain), snap);
-    const bool mq = sMidQ.step(load(midQ), snap);
-    if (mf || mg || mq || snap)
-        setBand(Mid, biquad::peak(sr, sMidFreq.current, std::max(0.1f, sMidQ.current), sMidGain.current), snap);
-
-    // The two extra bells. At exactly 0 dB (and settled) a bell is left out of the
-    // signal path, so setups that don't use it sound and cost exactly as before.
-    auto extraBell = [&](Band band, BlockSmoothed& f, BlockSmoothed& g, BlockSmoothed& q, std::atomic<float>* fp, std::atomic<float>* gp,
-                         std::atomic<float>* qp) {
-        const bool cf = f.step(load(fp), snap), cg = g.step(load(gp), snap), cq = q.step(load(qp), snap);
+    auto bell = [&](Band band, int point, BlockSmoothed& f, BlockSmoothed& g, BlockSmoothed& q, std::atomic<float>* fp,
+                    std::atomic<float>* gp, std::atomic<float>* qp) {
+        const bool cf = f.step(load(fp), snap), cg = g.step(on[point] ? load(gp) : 0.0f, snap), cq = q.step(load(qp), snap);
         if (cf || cg || cq || snap)
             setBand(band, biquad::peak(sr, f.current, std::max(0.1f, q.current), g.current), snap);
-        const bool idle = g.current == 0.0f && g.target == 0.0f && !gliding[band];
-        if (idle && !bandIdle[band])
-            filters[band].reset(); // start clean when it is used again
-        bandIdle[band] = idle;
     };
-    extraBell(LoMid, sLoMidFreq, sLoMidGain, sLoMidQ, loMidFreq, loMidGain, loMidQ);
-    extraBell(HiMid, sHiMidFreq, sHiMidGain, sHiMidQ, hiMidFreq, hiMidGain, hiMidQ);
+    bell(LoMid, 2, sLoMidFreq, sLoMidGain, sLoMidQ, loMidFreq, loMidGain, loMidQ);
+    bell(Mid, 3, sMidFreq, sMidGain, sMidQ, midFreq, midGain, midQ);
+    bell(HiMid, 4, sHiMidFreq, sHiMidGain, sHiMidQ, hiMidFreq, hiMidGain, hiMidQ);
 
     const bool hf = sHighFreq.step(load(highFreq), snap);
-    const bool hg = sHighGain.step(load(highGain), snap);
+    const bool hg = sHighGain.step(on[5] ? load(highGain) : 0.0f, snap);
     if (hf || hg || snap)
         setBand(High, biquad::highShelf(sr, sHighFreq.current, sHighGain.current), snap);
+
+    // A band that does nothing (switched off, or a shelf or bell at exactly 0 dB, which
+    // works out to exactly "output = input") is left out of the signal path: the same
+    // sound, bit for bit, for less work. It starts clean when it's needed again.
+    for (int band = 0; band < NumBands; ++band)
+    {
+        const auto& c = filters[band].c;
+        const bool idle = !gliding[band] && c.b0 == 1.0f && c.b1 == c.a1 && c.b2 == c.a2;
+        if (idle && !bandIdle[band])
+            filters[band].reset();
+        bandIdle[band] = idle;
+    }
+    tameOn = on[6];
 
     if (sTameFreq.step(load(tameFreq), snap) || snap)
         tameBand.c = biquad::bandPass(sr, sTameFreq.current, 1.2);
     tameThresholdDb = load(tameThreshold);
-    tameMaxCutDb = load(tameRange);
+    tameMaxCutDb = tameOn ? load(tameRange) : 0.0f;
     popAmount = load(plosive) * 0.01f;
+}
+
+// The EQ's filters in series, with nothing moving: one band at a time, its 5
+// coefficients and 2 states held in registers for the whole block. (One pass with
+// every band at once needs more values than there are registers, and is slower.)
+void Equalizer::runCascade(float* const* ch, int numChannels, int n, const int* active, int count) noexcept
+{
+    for (int j = 0; j < count; ++j)
+    {
+        auto& f = filters[active[j]];
+        const BiquadCoeffs k = f.c;
+        for (int c = 0; c < numChannels; ++c)
+        {
+            float* x = ch[c];
+            float s1 = f.s1[c], s2 = f.s2[c];
+            for (int i = 0; i < n; ++i)
+            {
+                const float in = x[i];
+                const float y = k.b0 * in + s1;
+                s1 = k.b1 * in - k.a1 * y + s2;
+                s2 = k.b2 * in - k.a2 * y;
+                x[i] = y;
+            }
+            f.s1[c] = s1;
+            f.s2[c] = s2;
+        }
+    }
 }
 
 void Equalizer::process(float* const* ch, int numChannels, int n) noexcept
@@ -150,8 +195,7 @@ void Equalizer::process(float* const* ch, int numChannels, int n) noexcept
     else
         popMeter.store(0.0f, std::memory_order_relaxed);
 
-    // Steady state (nothing moving): all bands in one pass per channel, with their
-    // coefficients and states in locals so the whole cascade runs in registers.
+    // Steady state (nothing moving).
     bool anyGliding = false;
     for (int band = 0; band < NumBands; ++band)
         anyGliding = anyGliding || (gliding[band] && !bandIdle[band]);
@@ -159,40 +203,10 @@ void Equalizer::process(float* const* ch, int numChannels, int n) noexcept
     {
         int active[NumBands];
         int count = 0;
-        BiquadCoeffs k[NumBands];
         for (int band = 0; band < NumBands; ++band)
             if (!bandIdle[band])
-            {
-                active[count] = band;
-                k[count++] = filters[band].c;
-            }
-        for (int c = 0; c < numChannels; ++c)
-        {
-            float s1[NumBands], s2[NumBands];
-            for (int j = 0; j < count; ++j)
-            {
-                s1[j] = filters[active[j]].s1[c];
-                s2[j] = filters[active[j]].s2[c];
-            }
-            float* x = ch[c];
-            for (int i = 0; i < n; ++i)
-            {
-                float v = x[i];
-                for (int j = 0; j < count; ++j)
-                {
-                    const float y = k[j].b0 * v + s1[j];
-                    s1[j] = k[j].b1 * v - k[j].a1 * y + s2[j];
-                    s2[j] = k[j].b2 * v - k[j].a2 * y;
-                    v = y;
-                }
-                x[i] = v;
-            }
-            for (int j = 0; j < count; ++j)
-            {
-                filters[active[j]].s1[c] = s1[j];
-                filters[active[j]].s2[c] = s2[j];
-            }
-        }
+                active[count++] = band;
+        runCascade(ch, numChannels, n, active, count);
     }
 
     // A setting is moving: band by band, gliding the ones that changed.

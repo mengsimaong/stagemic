@@ -43,6 +43,9 @@ private:
 
     std::atomic<float>*lowCut, *lowCutSlope, *lowFreq, *lowGain, *midFreq, *midGain, *midQ, *highFreq, *highGain;
     std::atomic<float>*loMidFreq, *loMidGain, *loMidQ, *hiMidFreq, *hiMidGain, *hiMidQ;
+    std::atomic<float>* pointOn[7] = {}; // on/off per EQ point
+    bool pointWasOn[7] = {true, true, true, true, true, true, true}; // only the low cut needs it
+    bool tameOn = true;
     std::atomic<float>*tameFreq, *tameThreshold, *tameRange, *plosive;
     int slope = -1;
     double sr = 48000.0;
@@ -55,6 +58,7 @@ private:
     BiquadCoeffs glideTo[NumBands];
     bool gliding[NumBands]{};
     void setBand(Band band, const BiquadCoeffs& coeffs, bool snap) noexcept;
+    void runCascade(float* const* channels, int numChannels, int numSamples, const int* active, int count) noexcept;
 
     // Harshness tamer: y = x + (g - 1) * band(x), with g following how far the
     // band sticks out above the body of the voice (so it's level-independent).

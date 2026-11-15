@@ -46,6 +46,17 @@ private:
     juce::StringArray lines;
     float level = 0.0f; // live mic level for the little meter, 0..1
     juce::TextButton primary, secondary, tertiary;
+
+    // First time only: "What do you mostly do on stream?" picks a matching preset on Apply.
+    struct Use
+    {
+        const char* label;
+        const char* preset;
+    };
+    static constexpr Use uses[3] = {{"Sing", "Clean Vocal"}, {"Talk & game", "Just Talking"}, {"ASMR (whisper)", "ASMR"}};
+    juce::TextButton useButtons[3];
+    int chosenUse = -1;
+    void showUseChoice(bool);
 };
 
 } // namespace stagemic

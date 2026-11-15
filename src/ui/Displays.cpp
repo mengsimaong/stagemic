@@ -237,23 +237,33 @@ int EqDisplay::nodeAt(juce::Point<float> p) const
     return best;
 }
 
+bool EqDisplay::pointIsOn(int index) const
+{
+    return value(pid::eqPointOn[index]) >= 0.5f;
+}
+
 float EqDisplay::responseDb(float freq) const
 {
     const double sr = sampleRate ? juce::jmax(8000.0, sampleRate()) : 48000.0;
     // The low cut exactly as the EQ builds it: 12 dB/oct, or 24 dB/oct as two stages.
-    float db;
-    if (value(pid::eqLowCutSlope) >= 0.5f)
+    float db = 0.0f;
+    if (!pointIsOn(0))
+        ; // low cut switched off
+    else if (value(pid::eqLowCutSlope) >= 0.5f)
         db = biquadMagnitudeDb(dsp::biquad::highpass(sr, value(pid::eqLowCut), 0.54119610), freq, sr)
              + biquadMagnitudeDb(dsp::biquad::highpass(sr, value(pid::eqLowCut), 1.30656296), freq, sr);
     else
         db = biquadMagnitudeDb(dsp::biquad::highpass(sr, value(pid::eqLowCut), 0.70710678), freq, sr);
-    db += biquadMagnitudeDb(dsp::biquad::lowShelf(sr, value(pid::eqLowFreq), value(pid::eqLowGain)), freq, sr);
-    db += biquadMagnitudeDb(dsp::biquad::peak(sr, value(pid::eqMidFreq), juce::jmax(0.1f, value(pid::eqMidQ)), value(pid::eqMidGain)), freq, sr);
-    db += biquadMagnitudeDb(dsp::biquad::highShelf(sr, value(pid::eqHighFreq), value(pid::eqHighGain)), freq, sr);
-    for (const auto& [f, g, q] : {std::tuple{pid::eqLoMidFreq, pid::eqLoMidGain, pid::eqLoMidQ}, std::tuple{pid::eqHiMidFreq, pid::eqHiMidGain, pid::eqHiMidQ}})
-        if (value(g) != 0.0f)
+    if (pointIsOn(1))
+        db += biquadMagnitudeDb(dsp::biquad::lowShelf(sr, value(pid::eqLowFreq), value(pid::eqLowGain)), freq, sr);
+    if (pointIsOn(3))
+        db += biquadMagnitudeDb(dsp::biquad::peak(sr, value(pid::eqMidFreq), juce::jmax(0.1f, value(pid::eqMidQ)), value(pid::eqMidGain)), freq, sr);
+    if (pointIsOn(5))
+        db += biquadMagnitudeDb(dsp::biquad::highShelf(sr, value(pid::eqHighFreq), value(pid::eqHighGain)), freq, sr);
+    for (const auto& [f, g, q, point] : {std::tuple{pid::eqLoMidFreq, pid::eqLoMidGain, pid::eqLoMidQ, 2}, std::tuple{pid::eqHiMidFreq, pid::eqHiMidGain, pid::eqHiMidQ, 4}})
+        if (value(g) != 0.0f && pointIsOn(point))
             db += biquadMagnitudeDb(dsp::biquad::peak(sr, value(f), juce::jmax(0.1f, value(q)), value(g)), freq, sr);
-    if (tameCutDb > 0.05f && value(pid::eqTameRange) > 0.0f)
+    if (tameCutDb > 0.05f && value(pid::eqTameRange) > 0.0f && pointIsOn(6))
         db += biquadMagnitudeDb(dsp::biquad::peak(sr, value(pid::eqTameFreq), 1.2, -tameCutDb), freq, sr);
     return db;
 }
@@ -317,8 +327,10 @@ void EqDisplay::paint(juce::Graphics& g)
             g.drawEllipse(juce::Rectangle<float>(21.0f, 21.0f).withCentre(p), 1.2f);
         }
         const bool tame = nodes[(size_t)i].tame;
-        const auto pointColour = tame ? (on && value(pid::eqTameRange) > 0.0f ? theme::reduction : theme::faintText) : curveColour;
-        if (tame && on && value(pid::eqTameRange) > 0.0f)
+        const bool pointOn = pointIsOn(i);
+        const auto pointColour = !pointOn ? theme::faintText
+                                          : (tame ? (on && value(pid::eqTameRange) > 0.0f ? theme::reduction : theme::faintText) : curveColour);
+        if (tame && on && pointOn && value(pid::eqTameRange) > 0.0f)
         {
             // Dashed line from 0 dB down to the most it may cut.
             const float dashes[] = {3.0f, 3.0f};
@@ -329,7 +341,7 @@ void EqDisplay::paint(juce::Graphics& g)
         g.fillEllipse(juce::Rectangle<float>(13.0f, 13.0f).withCentre(p));
         g.setColour(pointColour);
         g.drawEllipse(juce::Rectangle<float>(13.0f, 13.0f).withCentre(p), 2.0f);
-        g.setColour(on ? theme::text : theme::dimText);
+        g.setColour(on && pointOn ? theme::text : theme::dimText);
         g.setFont(theme::font(10.0f, true));
         g.drawText(juce::String(i + 1), juce::Rectangle<float>(13.0f, 13.0f).withCentre(p), juce::Justification::centred);
     }
@@ -702,6 +714,15 @@ EqBandBar::EqBandBar(APVTS& s)
     {
         rows.push_back(std::make_unique<FieldRow>(s, std::vector<FieldRow::Group>{{juce::String((int)i + 1), bands[i].name, fields[i]}}));
         addChildComponent(*rows.back());
+
+        // Its own on/off switch, on the chip.
+        pointPower[i].setTooltip("Switch point " + juce::String((int)i + 1) + " (" + bands[i].name + ") on or off, to hear what it does");
+        pointPower[i].onStateChange = [this, i] {
+            if (i < chips.size())
+                repaint(chips[i]);
+        };
+        pointAttachments.push_back(std::make_unique<APVTS::ButtonAttachment>(s, pid::eqPointOn[i], pointPower[i]));
+        addAndMakeVisible(pointPower[i]);
     }
     setTooltip("Click a point's chip (or the point on the graph) to show its knobs.");
     select(selected);
@@ -726,7 +747,7 @@ juce::String EqBandBar::readOut(int index, int line) const
     if (b.tame && line == 1)
     {
         const float maxCut = state.getRawParameterValue(id)->load();
-        text = maxCut > 0.0f ? "cuts up to " + juce::String(maxCut, 1) + " dB" : juce::String("off");
+        text = maxCut > 0.0f ? "-" + juce::String(maxCut, 1) + " dB max" : juce::String("off");
     }
     return text;
 }
@@ -798,6 +819,7 @@ void EqBandBar::resized()
     {
         chips.push_back(area.removeFromLeft(w));
         area.removeFromLeft(gap);
+        pointPower[i].setBounds(chips.back().getRight() - 26, chips.back().getBottom() - 26, 22, 20);
     }
 }
 
@@ -816,11 +838,12 @@ void EqBandBar::paint(juce::Graphics& g)
             g.drawRoundedRectangle(r, 5.0f, 1.2f);
         }
 
+        const bool pointOn = pointPower[i].getToggleState();
         auto inner = chips[(size_t)i].reduced(7, 6);
         auto top = inner.removeFromTop(18);
         const auto badge = top.removeFromLeft(15).toFloat().withSizeKeepingCentre(15.0f, 15.0f);
         const bool tame = bands[(size_t)i].tame;
-        g.setColour(tame ? theme::reduction : tint);
+        g.setColour(!pointOn ? theme::faintText : (tame ? theme::reduction : tint));
         g.drawEllipse(badge.reduced(0.75f), 1.5f);
         g.setColour(theme::text);
         g.setFont(theme::font(10.0f, true));
@@ -831,12 +854,13 @@ void EqBandBar::paint(juce::Graphics& g)
         g.drawFittedText(bands[(size_t)i].name.toUpperCase(), top, juce::Justification::centredLeft, 1, 0.7f);
 
         inner.removeFromTop(4);
-        g.setColour(on ? theme::text : theme::dimText);
+        g.setColour(!pointOn ? theme::faintText : (on ? theme::text : theme::dimText));
         g.setFont(theme::font(12.0f, on));
         g.drawFittedText(readOut(i, 0), inner.removeFromTop(17), juce::Justification::centredLeft, 1, 0.8f);
-        g.setColour(theme::dimText);
+        g.setColour(!pointOn ? theme::faintText : theme::dimText);
         g.setFont(theme::font(11.5f));
-        g.drawFittedText(readOut(i, 1), inner.removeFromTop(16), juce::Justification::centredLeft, 1, 0.8f);
+        g.drawFittedText(pointOn ? readOut(i, 1) : juce::String("off"), inner.removeFromTop(16).withTrimmedRight(24),
+                         juce::Justification::centredLeft, 1, 0.8f);
     }
 }
 
