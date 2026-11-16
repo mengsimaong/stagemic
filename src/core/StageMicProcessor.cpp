@@ -8,7 +8,7 @@
 #include <cmath>
 
 #ifndef STAGEMIC_VERSION
-  #define STAGEMIC_VERSION "dev"
+    #define STAGEMIC_VERSION "dev"
 #endif
 
 namespace stagemic
@@ -83,7 +83,7 @@ void applyGain(juce::SmoothedValue<float>& gain, float* const* ch, int numChanne
     {
         const float g = gain.getCurrentValue();
         if (g == 1.0f)
-            return; // unity: leave the audio bit-exact
+            return; // unity
         for (int c = 0; c < numChannels; ++c)
             juce::FloatVectorOperations::multiply(ch[c], g, n);
         return;
@@ -100,7 +100,7 @@ void applyGain(juce::SmoothedValue<float>& gain, float* const* ch, int numChanne
 
 void StageMicProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi)
 {
-    // REAL-TIME AUDIO THREAD: no allocation, no locks, no logging, no waiting.
+    // REAL-TIME AUDIO THREAD: no allocation, no locks, no logging, no waiting
     juce::ScopedNoDenormals noDenormals;
     midi.clear();
 
@@ -122,7 +122,7 @@ void StageMicProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mid
             ptrs[c] = buffer.getWritePointer(c, offset);
 
         dsp::scrubNonFinite(ptrs, numChannels, n);
-        // Before / After: keep the untouched mic (only while it's wanted or fading).
+        // Before / After
         const bool wantBefore = hearBefore.load(std::memory_order_relaxed);
         const bool mixBefore = wantBefore || beforeMix > 0.0f;
         if (mixBefore)
@@ -137,13 +137,12 @@ void StageMicProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mid
         chain.process(ptrs, numChannels, n);
 
         applyGain(outGainSmooth, ptrs, numChannels, n);
-        // Only when StageMic changes the sound: with every module off and both gains
-        // at 0 dB the audio passes through untouched, bit for bit.
-        const bool changesSound = chain.anyModuleActive() || inGainSmooth.isSmoothing() || outGainSmooth.isSmoothing()
-                                  || inGainSmooth.getCurrentValue() != 1.0f || outGainSmooth.getCurrentValue() != 1.0f;
+        // Skipped when nothing is active, so bypass stays bit-exact
+        const bool changesSound = chain.anyModuleActive() || inGainSmooth.isSmoothing() || outGainSmooth.isSmoothing() ||
+                                  inGainSmooth.getCurrentValue() != 1.0f || outGainSmooth.getCurrentValue() != 1.0f;
         if (changesSound && !dsp::safetyLimit(ptrs, numChannels, n, safetyEnvelope, safetyRelease))
         {
-            // Something inside went wrong: send silence for this moment and start every module afresh.
+            // Non-finite output: mute this block and reset the chain
             for (int c = 0; c < numChannels; ++c)
                 juce::FloatVectorOperations::clear(ptrs[c], n);
             chain.requestSnap();
@@ -177,12 +176,9 @@ void StageMicProcessor::fixOneSidedMic(float* const* ch, int numChannels, int n)
             sum += ch[c][i] * ch[c][i];
         sideEnergy[c] = sideSmoothing * sideEnergy[c] + (1.0f - sideSmoothing) * sum / (float)n;
     }
-    // One side has a voice (above -60 dBFS) and the other is near silent (below -80 dBFS,
-    // and 40 dB quieter) for a whole second: copy the voice to the silent side. Stops as
-    // soon as the silent side carries real sound (a true stereo source).
+    // One side has a voice and the other is near silent for a whole second
     const int loud = sideEnergy[0] >= sideEnergy[1] ? 0 : 1;
-    const bool oneSided = sideEnergy[loud] > 1.0e-6f && sideEnergy[1 - loud] < 1.0e-8f
-                          && sideEnergy[1 - loud] < sideEnergy[loud] * 1.0e-4f;
+    const bool oneSided = sideEnergy[loud] > 1.0e-6f && sideEnergy[1 - loud] < 1.0e-8f && sideEnergy[1 - loud] < sideEnergy[loud] * 1.0e-4f;
     if (mirrorFrom >= 0)
     {
         if (sideEnergy[1 - mirrorFrom] > 1.0e-7f)
@@ -208,8 +204,7 @@ juce::AudioProcessorEditor* StageMicProcessor::createEditor()
 }
 
 //==============================================================================
-// State = sound settings + which preset is selected. Stored by OBS in the scene
-// collection (and by DAWs in their project).
+// State = sound settings + which preset is selected
 void StageMicProcessor::getStateInformation(juce::MemoryBlock& destData)
 {
     juce::ValueTree state(stateTag);
@@ -231,16 +226,15 @@ void StageMicProcessor::setStateInformation(const void* data, int sizeInBytes)
 {
     auto xml = getXmlFromBinary(data, sizeInBytes);
     if (xml == nullptr || !xml->hasTagName(stateTag))
-        return; // Unknown or corrupt data: keep current settings rather than crash.
+        return; // Unknown or corrupt data
 
     const auto state = juce::ValueTree::fromXml(*xml);
     const int version = state.getProperty("version", 0);
 
-    // Version 1 (Phase 1) had no sound settings: it simply loads as the defaults.
+    // Version 1 had no sound settings
     const auto params = version >= 2 ? state.getChildWithName(paramsTag) : juce::ValueTree();
 
-    // Version 2 (v0.2.0) setups still on that version's *default* order move to the new
-    // recommended order; an order someone chose deliberately is kept as it is.
+    // v2 setups on the old default order move to the new one
     auto order = state.getProperty("order").toString();
     if (version < 3 && order == dsp::VocalChain::legacyDefaultOrderString())
         order = {};
@@ -253,19 +247,17 @@ void StageMicProcessor::setStateInformation(const void* data, int sizeInBytes)
     if (state.hasProperty("preset"))
         currentPresetName = state.getProperty("preset").toString();
 
-    chain.requestSnap(); // restoring a saved session: no fades, start exactly as saved
+    chain.requestSnap(); // restoring a saved session
 }
 
 //==============================================================================
 void StageMicProcessor::applySoundTree(const juce::ValueTree& params, const juce::String& order)
 {
-    // Start from defaults so anything the saved data doesn't mention is predictable.
+    // Start from defaults
     juce::ValueTree fresh(paramsTag);
     if (params.isValid())
         fresh.copyPropertiesAndChildrenFrom(params, nullptr);
-    // A damaged or hand-edited file may hold values that aren't numbers ("nan", "inf"):
-    // drop those so the setting falls back to its default (out-of-range numbers are
-    // clamped to the setting's range when applied).
+    // A damaged or hand-edited file may hold values that aren't numbers
     for (int i = fresh.getNumChildren(); --i >= 0;)
     {
         const auto child = fresh.getChild(i);

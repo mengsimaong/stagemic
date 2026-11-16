@@ -46,7 +46,7 @@ void Equalizer::prepare(double sampleRate, int)
     popBody.c = biquad::bandPass(sr, 1000.0, 0.5);
     popAttack = timeToCoef(0.5f, sr);
     popRelease = timeToCoef(40.0f, sr);
-    popBodyAttack = timeToCoef(0.5f, sr); // as fast as the low end, so a sung note's start isn't a "thump"
+    popBodyAttack = timeToCoef(0.5f, sr); // as fast as the low end, so a sung note's start
     popBodyRelease = timeToCoef(150.0f, sr);
     popMixAttack = timeToCoef(0.3f, sr);
     popMixRelease = timeToCoef(120.0f, sr);
@@ -88,9 +88,7 @@ void Equalizer::setBand(Band band, const BiquadCoeffs& coeffs, bool snap) noexce
 
 void Equalizer::update(bool snap) noexcept
 {
-    // A point switched off glides its gain to 0 dB (the low cut its frequency down to
-    // 10 Hz), like turning a knob, so there's no click; there it does nothing and is
-    // skipped below.
+    // A point switched off glides its gain to 0 dB, like turning a knob
     bool on[7];
     for (int i = 0; i < 7; ++i)
         on[i] = pointOn[i] == nullptr || load(pointOn[i]) >= 0.5f;
@@ -102,12 +100,12 @@ void Equalizer::update(bool snap) noexcept
         slope = newSlope;
         if (!on[0] && sLowCut.current <= lowCutOff + 0.01f)
         {
-            setBand(LowCut, BiquadCoeffs{}, snap); // fully off: out of the signal path
+            setBand(LowCut, BiquadCoeffs{}, snap); // fully off
             setBand(LowCut2, BiquadCoeffs{}, snap);
         }
         else if (slope == 24)
         {
-            // 4th-order Butterworth: two biquads with these Qs.
+            // 4th-order Butterworth
             setBand(LowCut, biquad::highpass(sr, sLowCut.current, 0.54119610), snap);
             setBand(LowCut2, biquad::highpass(sr, sLowCut.current, 1.30656296), snap);
         }
@@ -139,9 +137,7 @@ void Equalizer::update(bool snap) noexcept
     if (hf || hg || snap)
         setBand(High, biquad::highShelf(sr, sHighFreq.current, sHighGain.current), snap);
 
-    // A band that does nothing (switched off, or a shelf or bell at exactly 0 dB, which
-    // works out to exactly "output = input") is left out of the signal path: the same
-    // sound, bit for bit, for less work. It starts clean when it's needed again.
+    // A band that does nothing is left out of the signal path
     for (int band = 0; band < NumBands; ++band)
     {
         const auto& c = filters[band].c;
@@ -159,9 +155,7 @@ void Equalizer::update(bool snap) noexcept
     popAmount = load(plosive) * 0.01f;
 }
 
-// The EQ's filters in series, with nothing moving: one band at a time, its 5
-// coefficients and 2 states held in registers for the whole block. (One pass with
-// every band at once needs more values than there are registers, and is slower.)
+// The EQ's filters in series, with nothing moving
 void Equalizer::runCascade(float* const* ch, int numChannels, int n, const int* active, int count) noexcept
 {
     for (int j = 0; j < count; ++j)
@@ -188,14 +182,13 @@ void Equalizer::runCascade(float* const* ch, int numChannels, int n, const int* 
 
 void Equalizer::process(float* const* ch, int numChannels, int n) noexcept
 {
-    // Plosives first, on the raw voice: the low cut reshapes a thump's start,
-    // which would make it slower to spot.
+    // Plosives first, on the raw voice
     if (popAmount > 0.0f || popMix > 1.0e-4f)
         processPlosive(ch, numChannels, n);
     else
         popMeter.store(0.0f, std::memory_order_relaxed);
 
-    // Steady state (nothing moving).
+    // Steady state
     bool anyGliding = false;
     for (int band = 0; band < NumBands; ++band)
         anyGliding = anyGliding || (gliding[band] && !bandIdle[band]);
@@ -209,7 +202,7 @@ void Equalizer::process(float* const* ch, int numChannels, int n) noexcept
         runCascade(ch, numChannels, n, active, count);
     }
 
-    // A setting is moving: band by band, gliding the ones that changed.
+    // A setting is moving
     for (int band = 0; anyGliding && band < NumBands; ++band)
     {
         auto& f = filters[band];
@@ -217,7 +210,7 @@ void Equalizer::process(float* const* ch, int numChannels, int n) noexcept
             continue;
         if (!gliding[band])
         {
-            // Coefficients and state in locals, so the loop runs in registers.
+            // Coefficients and state in locals, so the loop runs in registers
             const BiquadCoeffs k = f.c;
             for (int c = 0; c < numChannels; ++c)
             {
@@ -237,8 +230,6 @@ void Equalizer::process(float* const* ch, int numChannels, int n) noexcept
             continue;
         }
 
-        // Glide: a straight line from the current shape to the new one across this
-        // block (both are stable filters, and so is every shape in between).
         const auto& to = glideTo[band];
         const float inv = 1.0f / (float)n;
         const BiquadCoeffs d{(to.b0 - f.c.b0) * inv, (to.b1 - f.c.b1) * inv, (to.b2 - f.c.b2) * inv, (to.a1 - f.c.a1) * inv,
@@ -287,16 +278,15 @@ void Equalizer::processPlosive(float* const* ch, int numChannels, int n) noexcep
         popEnv = low + (low > popEnv ? popAttack : popRelease) * (popEnv - low);
         popBodyEnv = body + (body > popBodyEnv ? popBodyAttack : popBodyRelease) * (popBodyEnv - body);
 
-        // A thump: the lows jump 7+ dB above the body of the voice (fully at 12 dB).
-        // Sung notes, even low male ones, sit around or below 0 dB.
+        // A thump
         const float jumpDb = gainToDb(popEnv) - gainToDb(std::max(popBodyEnv, 1.0e-5f));
         const float target = popEnv > 3.0e-3f ? popAmount * std::clamp((jumpDb - 7.0f) / 5.0f, 0.0f, 1.0f) : 0.0f;
         popMix = target + (target > popMix ? popMixAttack : popMixRelease) * (popMix - target);
 
-        // Cutoff 10 Hz (inaudible) .. 160 Hz, exponential in the mix amount.
-        const float fc = 10.0f * std::exp(2.7725887f * popMix); // ln(16) = 2.77
+        // Cutoff 10 Hz .. 160 Hz, exponential in the mix amount
+        const float fc = 10.0f * std::exp(2.7725887f * popMix); // ln = 2.77
         const float g = std::tan((float)kPi * fc / (float)sr);
-        constexpr float k = 1.41421356f; // Q 0.707 per stage: 24 dB/oct Linkwitz-Riley overall
+        constexpr float k = 1.41421356f; // Q 0.707 per stage
         const float a1 = 1.0f / (1.0f + g * (g + k)), a2 = g * a1, a3 = g * a2;
 
         for (int c = 0; c < numChannels; ++c)
@@ -312,8 +302,7 @@ void Equalizer::processPlosive(float* const* ch, int numChannels, int n) noexcep
                 st.ic2 = 2.0f * v2 - st.ic2;
                 v = v - k * v1 - v2; // high-pass output
             }
-            // No thump: the voice passes untouched (the filter keeps running at 10 Hz,
-            // where it's practically identical, so switching in is seamless).
+            // No thump
             if (popMix > 1.0e-3f)
                 ch[c][i] = v;
         }
@@ -336,7 +325,7 @@ void Equalizer::processTame(float* const* ch, int numChannels, int n) noexcept
         tameEnv = peak + (peak > tameEnv ? tameAttack : tameRelease) * (tameEnv - peak);
         bodyEnv = bodyPeak + (bodyPeak > bodyEnv ? bodyAttack : bodyRelease) * (bodyEnv - bodyPeak);
 
-        // How far the band sticks out above the body of the voice; ignored in near-silence.
+        // How far the band sticks out above the body of the voice
         const float stickOutDb = gainToDb(tameEnv) - gainToDb(bodyEnv);
         float targetDb = 0.0f;
         if (tameEnv > 1.0e-4f)
@@ -352,23 +341,25 @@ void Equalizer::processTame(float* const* ch, int numChannels, int n) noexcept
 //==============================================================================
 namespace
 {
-constexpr float emphasisDb = 5.0f; // how much more the mids are driven than the lows and highs
+constexpr float emphasisDb = 5.0f; // how much more the mids are driven than the lows
 
 std::unique_ptr<juce::dsp::Oversampling<float>> makeOversampler(int numChannels)
 {
-    // 4x, minimum-phase IIR half-band filters: tiny delay (no linear-phase latency).
-    auto os = std::make_unique<juce::dsp::Oversampling<float>>(
-        (size_t)juce::jlimit(1, kMaxChannels, numChannels), 2, juce::dsp::Oversampling<float>::filterHalfBandPolyphaseIIR,
-        true, false);
+    // 4x, minimum-phase IIR half-band filters
+    auto os = std::make_unique<juce::dsp::Oversampling<float>>((size_t)juce::jlimit(1, kMaxChannels, numChannels), 2,
+                                                               juce::dsp::Oversampling<float>::filterHalfBandPolyphaseIIR, true, false);
     os->initProcessing((size_t)VocalChain::kSubBlock);
     return os;
 }
 
-inline float shapeTube(float x, float b, float tanhB) noexcept { return std::tanh(x + b) - tanhB; }
+inline float shapeTube(float x, float b, float tanhB) noexcept
+{
+    return std::tanh(x + b) - tanhB;
+}
 
 inline float shapeTape(float x, float b) noexcept
 {
-    // Soft, rounded knee: x / (1 + |x|^2.5)^0.4, slightly offset by b.
+    // Soft, rounded knee
     const float u = x + b;
     const float y = u / std::pow(1.0f + std::pow(std::abs(u), 2.5f), 0.4f);
     const float y0 = b / std::pow(1.0f + std::pow(std::abs(b), 2.5f), 0.4f);
@@ -377,8 +368,11 @@ inline float shapeTape(float x, float b) noexcept
 
 inline float shapeConsole(float x, float b) noexcept
 {
-    // Gentle cubic driven at 40%: a little density, rarely reaching the clamp.
-    auto cubic = [](float u) { u = juce::jlimit(-1.0f, 1.0f, u); return 1.5f * (u - u * u * u / 3.0f); };
+    // Gentle cubic driven at 40%: a little density, rarely reaching the clamp
+    auto cubic = [](float u) {
+        u = juce::jlimit(-1.0f, 1.0f, u);
+        return 1.5f * (u - u * u * u / 3.0f);
+    };
     return (cubic(0.4f * x + b) - cubic(b)) * 2.5f;
 }
 } // namespace
@@ -445,11 +439,11 @@ void Saturation::process(float* const* ch, int numChannels, int n) noexcept
     const float makeup = 1.0f / std::pow(k, 0.6f); // quiet parts stay level, loud parts get denser
     const float wet = mixAmount.current;
     const float b = bias.current;
-    // Tube leans further off-centre than the other models: strongly even harmonics (warmth).
+    // Tube leans further off-centre than the other models
     const float tubeBias = 0.15f + 1.5f * b;
     const float tanhTubeBias = std::tanh(tubeBias);
 
-    // Keep the dry voice, then pre-emphasise the copy that gets saturated.
+    // Keep the dry voice, then pre-emphasise the copy that gets saturated
     float dry[kMaxChannels][VocalChain::kSubBlock], clean[kMaxChannels][VocalChain::kSubBlock];
     for (int c = 0; c < numChannels; ++c)
         for (int i = 0; i < n; ++i)
@@ -458,7 +452,7 @@ void Saturation::process(float* const* ch, int numChannels, int n) noexcept
             ch[c][i] = clean[c][i] = preHigh.process(preLow.process(ch[c][i], c), c);
         }
 
-    // The curve's small-signal gain: what a clean (undistorted) copy would come out as.
+    // The curve's small-signal gain
     auto shape = [&](float in) {
         return modelIndex == 0 ? shapeTube(in, tubeBias, tanhTubeBias)
                                : (modelIndex == 1 ? shapeTape(in, b * 0.5f) : shapeConsole(in, b * 0.3f));
@@ -484,7 +478,7 @@ void Saturation::process(float* const* ch, int numChannels, int n) noexcept
         for (int c = 0; c < numChannels; ++c)
         {
             cleanDelay[c][cleanDelayPos] = clean[c][i];
-            // Clean voice + only what the curve added above 150 Hz (no loudness-following thump).
+            // Clean voice + only what the curve added above 150 Hz
             const float cleanPart = cleanGain * cleanDelay[c][readPos];
             ch[c][i] = cleanPart + junkHigh2.process(junkHigh1.process(ch[c][i] - cleanPart, c), c);
         }
@@ -495,7 +489,7 @@ void Saturation::process(float* const* ch, int numChannels, int n) noexcept
         for (int i = 0; i < n; ++i)
         {
             float y = postHigh.process(postLow.process(ch[c][i] * makeup, c), c);
-            if (modelIndex == 1) // tape: softer top end
+            if (modelIndex == 1) // tape
                 y = (tapeLowpass[c] += tapeCoef * (y - tapeLowpass[c]));
 
             const float blocked = y - dcIn[c] + dcCoef * dcOut[c];
@@ -565,7 +559,7 @@ void Exciter::process(float* const* ch, int numChannels, int n) noexcept
     {
         auto* x = up.getChannelPointer(c);
         for (size_t i = 0; i < up.getNumSamples(); ++i)
-            x[i] = shapeTube(x[i] * k, b, tanhB); // asymmetric: even + odd harmonics
+            x[i] = shapeTube(x[i] * k, b, tanhB); // asymmetric
     }
     oversampler->processSamplesDown(block);
 

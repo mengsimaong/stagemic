@@ -91,6 +91,11 @@ set(
   src/ui/Strips.cpp
   src/ui/Strips.h
   src/ui/Displays.cpp
+  src/ui/EqDisplay.cpp
+  src/ui/GraphHelpers.h
+  src/ui/MultibandDisplay.cpp
+  src/ui/Spectrum.cpp
+  src/ui/TuneDisplay.cpp
   src/ui/Displays.h
   src/ui/MasterPanel.cpp
   src/ui/MasterPanel.h

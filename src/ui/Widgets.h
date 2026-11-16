@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-// Small reusable controls for the StageMic window.
+// Small reusable controls for the StageMic window
 #pragma once
 
 #include "core/Parameters.h"
@@ -12,7 +12,6 @@ namespace stagemic
 
 using APVTS = juce::AudioProcessorValueTreeState;
 
-/** Square LED-style on/off switch. */
 class PowerButton final : public juce::Button
 {
 public:
@@ -20,7 +19,7 @@ public:
     void paintButton(juce::Graphics&, bool over, bool down) override;
 };
 
-/** Small rotary knob with its name above and value below. */
+// Small rotary knob with its name above and value below
 class SmallKnob final : public juce::Component
 {
 public:
@@ -34,11 +33,7 @@ private:
     APVTS::SliderAttachment attachment;
 };
 
-/** Knob with its name on top and an editable value underneath:
-          Freq
-          (knob)     <- drag up/down; double-click resets
-        2.50 kHz     <- click and type (e.g. "2.5k", "-3", "+4.5 dB")
-*/
+// Knob with its name on top and an editable value underneath
 class ValueKnob final : public juce::Component
 {
 public:
@@ -53,8 +48,6 @@ private:
     APVTS::SliderAttachment attachment;
 };
 
-/** Multiple-choice setting: name on top, a button showing the current choice.
-    Each click moves to the next choice (e.g. Tube -> Tape -> Console -> Tube). */
 class ChoiceToggle final : public juce::Component
 {
 public:
@@ -70,7 +63,7 @@ private:
     juce::ParameterAttachment attachment;
 };
 
-/** Vertical fader with its name above and value below. */
+// Vertical fader with its name above and value below
 class Fader final : public juce::Component
 {
 public:
@@ -83,7 +76,7 @@ private:
     APVTS::SliderAttachment attachment;
 };
 
-/** Vertical level meter (dBFS) with peak hold. */
+// Vertical level meter with peak hold
 class MeterBar final : public juce::Component
 {
 public:
@@ -101,7 +94,7 @@ private:
     int holdTicks = 0;
 };
 
-/** Gain reduction bar that grows downward (0 to -maxDb). */
+// Gain reduction bar that grows downward
 class ReductionMeter final
     : public juce::Component
     , public juce::SettableTooltipClient
@@ -116,14 +109,13 @@ private:
     float value = 0.0f;
 };
 
-/** A module panel: header with power switch and title, dimmed when off. */
 class Section : public juce::Component
 {
 public:
     enum class Header
     {
-        top,  // title bar across the top (strips)
-        left  // title on the left (compact rows)
+        top, // title bar across the top
+        left // title on the left
     };
 
     Section(APVTS& state, const char* enableParam, juce::String title, Header header = Header::top);
@@ -131,11 +123,11 @@ public:
     void paint(juce::Graphics&) override;
     void resized() override;
 
-    /** Called ~30 times a second with live meter values. */
+    // Called ~30 times a second with live meter values
     virtual void updateActivity(const dsp::VocalChain::Activity&) {}
 
 protected:
-    /** Lay out controls inside the area below the header. */
+    // Lay out controls inside the area below the header
     virtual void layoutContent(juce::Rectangle<int> area) = 0;
     bool isOn() const { return power.getToggleState(); }
 

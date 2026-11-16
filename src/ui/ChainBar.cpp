@@ -26,17 +26,24 @@ juce::String familyName(ModuleId id)
     {
         case ModuleId::Gate:
         case ModuleId::Equalizer:
-        case ModuleId::Leveler: return "clean-up";
+        case ModuleId::Leveler:
+            return "clean-up";
         case ModuleId::Compressor:
-        case ModuleId::Multiband: return "dynamics";
+        case ModuleId::Multiband:
+            return "dynamics";
         case ModuleId::Saturation:
-        case ModuleId::Exciter: return "color";
-        case ModuleId::DeEsser: return "de-ess";
+        case ModuleId::Exciter:
+            return "color";
+        case ModuleId::DeEsser:
+            return "de-ess";
         case ModuleId::Chorus:
         case ModuleId::Delay:
-        case ModuleId::Reverb: return "space (parallel)";
-        case ModuleId::Limiter: return "safety";
-        case ModuleId::Tune: return "pitch";
+        case ModuleId::Reverb:
+            return "space (parallel)";
+        case ModuleId::Limiter:
+            return "safety";
+        case ModuleId::Tune:
+            return "pitch";
     }
     return {};
 }
@@ -46,19 +53,32 @@ juce::String ChainBar::chipName(ModuleId id)
 {
     switch (id)
     {
-        case ModuleId::Gate: return "Gate";
-        case ModuleId::Equalizer: return "EQ";
-        case ModuleId::Leveler: return "Level";
-        case ModuleId::DeEsser: return "De-Ess";
-        case ModuleId::Compressor: return "Comp";
-        case ModuleId::Multiband: return "Multiband";
-        case ModuleId::Saturation: return "Warmth";
-        case ModuleId::Exciter: return "Air";
-        case ModuleId::Chorus: return "Chorus";
-        case ModuleId::Delay: return "Delay";
-        case ModuleId::Reverb: return "Reverb";
-        case ModuleId::Limiter: return "Limiter";
-        case ModuleId::Tune: return "Tune";
+        case ModuleId::Gate:
+            return "Gate";
+        case ModuleId::Equalizer:
+            return "EQ";
+        case ModuleId::Leveler:
+            return "Level";
+        case ModuleId::DeEsser:
+            return "De-Ess";
+        case ModuleId::Compressor:
+            return "Comp";
+        case ModuleId::Multiband:
+            return "Multiband";
+        case ModuleId::Saturation:
+            return "Warmth";
+        case ModuleId::Exciter:
+            return "Air";
+        case ModuleId::Chorus:
+            return "Chorus";
+        case ModuleId::Delay:
+            return "Delay";
+        case ModuleId::Reverb:
+            return "Reverb";
+        case ModuleId::Limiter:
+            return "Limiter";
+        case ModuleId::Tune:
+            return "Tune";
     }
     return {};
 }
@@ -82,8 +102,8 @@ juce::String ChainBar::getTooltip()
         return "Signal chain, in processing order. Click a module to show it, drag to move it, "
                "click its square to switch it on or off. The Limiter always stays last.";
     const auto id = shown[(size_t)hovered];
-    juce::String text = describe(id).displayName + juce::String(" (") + familyName(id) + ", "
-                      + (enabled[(size_t)id] ? "on" : "off") + ")\nClick to show";
+    juce::String text =
+        describe(id).displayName + juce::String(" (") + familyName(id) + ", " + (enabled[(size_t)id] ? "on" : "off") + ")\nClick to show";
     if (!isLocked(hovered))
         text << ", drag to move";
     text << ", square = on/off";
@@ -108,19 +128,26 @@ void ChainBar::setActivity(const dsp::VocalChain::Activity& a)
 
 float ChainBar::activityOf(ModuleId id) const
 {
-    // 0..1: how hard the module is working right now (shown as a bar in its chip).
     switch (id)
     {
-        case ModuleId::Gate: return juce::jlimit(0.0f, 1.0f, 1.0f - activity.gateGain);
-        case ModuleId::Leveler: return juce::jlimit(0.0f, 1.0f, std::abs(activity.levelerGainDb) / 12.0f);
-        case ModuleId::Compressor: return juce::jlimit(0.0f, 1.0f, activity.compressorReductionDb / 12.0f);
+        case ModuleId::Gate:
+            return juce::jlimit(0.0f, 1.0f, 1.0f - activity.gateGain);
+        case ModuleId::Leveler:
+            return juce::jlimit(0.0f, 1.0f, std::abs(activity.levelerGainDb) / 12.0f);
+        case ModuleId::Compressor:
+            return juce::jlimit(0.0f, 1.0f, activity.compressorReductionDb / 12.0f);
         case ModuleId::Multiband:
-            return juce::jlimit(0.0f, 1.0f, juce::jmax(activity.multibandReductionDb[0], activity.multibandReductionDb[1],
-                                                       activity.multibandReductionDb[2]) / 12.0f);
-        case ModuleId::DeEsser: return juce::jlimit(0.0f, 1.0f, activity.deEsserReductionDb / 8.0f);
-        case ModuleId::Equalizer: return juce::jlimit(0.0f, 1.0f, juce::jmax(activity.tameReductionDb / 8.0f, activity.plosiveAmount));
-        case ModuleId::Limiter: return juce::jlimit(0.0f, 1.0f, activity.limiterReductionDb / 6.0f);
-        default: return 0.0f;
+            return juce::jlimit(
+                0.0f, 1.0f,
+                juce::jmax(activity.multibandReductionDb[0], activity.multibandReductionDb[1], activity.multibandReductionDb[2]) / 12.0f);
+        case ModuleId::DeEsser:
+            return juce::jlimit(0.0f, 1.0f, activity.deEsserReductionDb / 8.0f);
+        case ModuleId::Equalizer:
+            return juce::jlimit(0.0f, 1.0f, juce::jmax(activity.tameReductionDb / 8.0f, activity.plosiveAmount));
+        case ModuleId::Limiter:
+            return juce::jlimit(0.0f, 1.0f, activity.limiterReductionDb / 6.0f);
+        default:
+            return 0.0f;
     }
 }
 
@@ -182,7 +209,7 @@ bool ChainBar::isLocked(int index) const
 
 int ChainBar::dropIndexFor(float x) const
 {
-    // Nearest slot, never past the Limiter.
+    // Nearest slot, never past the Limiter
     int best = 0;
     float bestDist = 1.0e9f;
     for (int i = 0; i < kNumModules; ++i)
@@ -205,7 +232,7 @@ void ChainBar::paint(juce::Graphics& g)
     g.setFont(theme::font(11.5f, true));
     g.drawText("CHAIN", getLocalBounds().removeFromLeft(56), juce::Justification::centredLeft);
 
-    // Parallel effects next to each other share one bracket underneath.
+    // Parallel effects next to each other share one bracket underneath
     for (int i = 0; i < kNumModules;)
     {
         if (!isSendModule(shown[(size_t)i]))
@@ -219,7 +246,8 @@ void ChainBar::paint(juce::Graphics& g)
         if (j > i)
         {
             const auto a = chipBounds(i), b = chipBounds(j);
-            const auto bracket = juce::Rectangle<float>(a.getX() - 3.0f, a.getY() - 2.0f, b.getRight() - a.getX() + 6.0f, a.getHeight() + 4.0f);
+            const auto bracket =
+                juce::Rectangle<float>(a.getX() - 3.0f, a.getY() - 2.0f, b.getRight() - a.getX() + 6.0f, a.getHeight() + 4.0f);
             g.setColour(familyColour(ModuleId::Reverb).withAlpha(0.10f));
             g.fillRoundedRectangle(bracket, 7.0f);
             g.setColour(familyColour(ModuleId::Reverb).withAlpha(0.45f));
@@ -255,7 +283,7 @@ void ChainBar::paint(juce::Graphics& g)
         g.setColour(on ? theme::panelRaised.brighter(hover ? 0.08f : 0.0f) : theme::panelOff.brighter(hover ? 0.06f : 0.0f));
         g.fillRoundedRectangle(r, 5.0f);
 
-        // Family stripe along the top.
+        // Family stripe along the top
         g.saveState();
         g.reduceClipRegion(r.withHeight(3.0f).toNearestInt());
         g.setColour(family.withAlpha(on ? 0.95f : 0.35f));
@@ -265,7 +293,7 @@ void ChainBar::paint(juce::Graphics& g)
         g.setColour(on ? family.withAlpha(0.6f) : theme::outline);
         g.drawRoundedRectangle(r.reduced(0.5f), 5.0f, 1.0f);
 
-        // On/off square.
+        // On/off square
         const auto led = ledBounds(i);
         g.setColour(on ? family : theme::background);
         g.fillRoundedRectangle(led, 2.0f);
@@ -277,7 +305,7 @@ void ChainBar::paint(juce::Graphics& g)
         g.drawFittedText(chipName(id) + (isLocked(i) ? " *" : ""), r.withTrimmedLeft(18.0f).toNearestInt().reduced(2, 0),
                          juce::Justification::centred, 1, 0.7f);
 
-        // How hard it's working right now.
+        // How hard it's working right now
         const float amount = on ? activityOf(id) : 0.0f;
         if (amount > 0.01f)
         {
@@ -289,7 +317,7 @@ void ChainBar::paint(juce::Graphics& g)
 
     if (dragging >= 0)
     {
-        // Where it will land, then the chip itself under the mouse.
+        // Where it will land, then the chip itself under the mouse
         const auto target = chipBounds(dropAt);
         g.setColour(theme::accent);
         g.fillRoundedRectangle(target.withWidth(3.0f).translated(dropAt > dragging ? target.getWidth() - 1.0f : -2.0f, 0.0f), 1.5f);
@@ -324,7 +352,7 @@ void ChainBar::mouseDown(const juce::MouseEvent& e)
     if (pressed < 0)
         return;
 
-    // The square switches the module on or off.
+    // The square switches the module on or off
     if (ledBounds(pressed).expanded(3.0f).contains(e.position))
     {
         if (auto* p = processor.getParameters().getParameter(describe(shown[(size_t)pressed]).enableParam))
@@ -361,7 +389,7 @@ void ChainBar::mouseUp(const juce::MouseEvent&)
 {
     if (!movedEnough && pressed >= 0)
     {
-        // A click, not a drag: show that module.
+        // A click, not a drag
         const auto id = shown[(size_t)pressed];
         dragging = dropAt = pressed = -1;
         repaint();

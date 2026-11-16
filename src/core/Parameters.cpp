@@ -22,7 +22,7 @@ struct FloatSpec
     const char* id;
     const char* name;
     float min, max, def;
-    float centre; // 0 = linear knob; otherwise the value at the knob's midpoint
+    float centre; // 0 = linear knob
     Unit unit;
 };
 
@@ -172,8 +172,7 @@ juce::String formatValue(float v, Unit unit)
         case Unit::dB:
             return (v > 0.0f ? "+" : "") + juce::String(v, 1) + " dB";
         case Unit::Hz:
-            return v >= 1000.0f ? juce::String(v / 1000.0f, v >= 10000.0f ? 1 : 2) + " kHz"
-                                : juce::String(v, v < 10.0f ? 2 : 0) + " Hz";
+            return v >= 1000.0f ? juce::String(v / 1000.0f, v >= 10000.0f ? 1 : 2) + " kHz" : juce::String(v, v < 10.0f ? 2 : 0) + " Hz";
         case Unit::ms:
             return juce::String(v, v < 10.0f ? 1 : 0) + " ms";
         case Unit::percent:
@@ -191,7 +190,7 @@ juce::String formatValue(float v, Unit unit)
 
 float parseValue(const juce::String& typed, int unitIndex)
 {
-    // Accepts what people naturally type: "2.5k", "3 kHz", "800hz", "-6", "+4.5 dB", "4:1", "120 ms", "1.2 s", "35%".
+    // Accepts what people naturally type
     const auto text = typed.trim().toLowerCase().removeCharacters(" ");
     const auto beforeColon = text.upToFirstOccurrenceOf(":", false, false); // "4:1" -> "4"
     const auto number = beforeColon.retainCharacters("0123456789.,-+").replaceCharacter(',', '.');
@@ -230,8 +229,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout()
                               .withStringFromValueFunction([unit](float v, int) { return formatValue(v, unit); })
                               .withValueFromStringFunction([unit](const juce::String& text) { return parseValue(text, (int)unit); });
 
-        layout.add(std::make_unique<juce::AudioParameterFloat>(juce::ParameterID{s.id, 1}, s.name, range, s.def,
-                                                               attributes));
+        layout.add(std::make_unique<juce::AudioParameterFloat>(juce::ParameterID{s.id, 1}, s.name, range, s.def, attributes));
     }
 
     for (const auto& s : boolSpecs)
@@ -244,18 +242,20 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout()
     layout.add(std::make_unique<juce::AudioParameterChoice>(juce::ParameterID{pid::satModel, 1}, "Saturation Model",
                                                             juce::StringArray{"Tube", "Tape", "Console"}, 0));
     layout.add(std::make_unique<juce::AudioParameterChoice>(
-        juce::ParameterID{pid::tuneKey, 1}, "Tune Key",
-        juce::StringArray{"C", "C#", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B"}, 0));
-    layout.add(std::make_unique<juce::AudioParameterChoice>(
-        juce::ParameterID{pid::tuneScale, 1}, "Tune Scale",
-        juce::StringArray{"Chromatic", "Major", "Minor", "Harmonic Minor", "Major Pentatonic", "Minor Pentatonic", "Blues", "Robot (one note)"}, 0));
+        juce::ParameterID{pid::tuneKey, 1}, "Tune Key", juce::StringArray{"C", "C#", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B"},
+        0));
+    layout.add(
+        std::make_unique<juce::AudioParameterChoice>(juce::ParameterID{pid::tuneScale, 1}, "Tune Scale",
+                                                     juce::StringArray{"Chromatic", "Major", "Minor", "Harmonic Minor", "Major Pentatonic",
+                                                                       "Minor Pentatonic", "Blues", "Robot (one note)"},
+                                                     0));
     layout.add(std::make_unique<juce::AudioParameterChoice>(juce::ParameterID{pid::tuneVoice, 1}, "Tune Voice",
                                                             juce::StringArray{"High", "Mid", "Low"}, 1));
     layout.add(std::make_unique<juce::AudioParameterInt>(
         juce::ParameterID{pid::tuneTranspose, 1}, "Tune Pitch", -12, 12, 0,
-        juce::AudioParameterIntAttributes().withStringFromValueFunction([](int v, int) {
-            return (v > 0 ? "+" : "") + juce::String(v) + " st";
-        }).withValueFromStringFunction([](const juce::String& t) { return t.retainCharacters("0123456789-+").getIntValue(); })));
+        juce::AudioParameterIntAttributes()
+            .withStringFromValueFunction([](int v, int) { return (v > 0 ? "+" : "") + juce::String(v) + " st"; })
+            .withValueFromStringFunction([](const juce::String& t) { return t.retainCharacters("0123456789-+").getIntValue(); })));
 
     return layout;
 }

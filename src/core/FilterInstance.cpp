@@ -22,13 +22,13 @@ FilterInstance::FilterInstance(const Config& config)
     processor->setRateAndBufferSizeDetails(config.sampleRate, maxBlockSize);
     processor->prepareToPlay(config.sampleRate, maxBlockSize);
 
-    // Reserve MIDI storage up front so clear()/processBlock never allocate.
+    // Reserve MIDI storage up front so clear/processBlock never allocate
     midi.ensureSize(256);
 }
 
 FilterInstance::~FilterInstance()
 {
-    // The editor must go before the processor it points to.
+    // The editor must go before the processor it points to
     window.reset();
     processor->releaseResources();
 }
@@ -58,7 +58,7 @@ void FilterInstance::process(float* const* channels, int numChannels, int numFra
         for (int ch = 0; ch < count; ++ch)
             chunkPointers[(size_t)ch] = channels[ch] + offset;
 
-        // Points the buffer at OBS's memory; uses internal storage for <=32 channels, so no allocation.
+        // Points the buffer at OBS's memory
         hostView.setDataToReferTo(chunkPointers.data(), count, n);
         midi.clear();
         processor->processBlock(hostView, midi);
@@ -81,7 +81,7 @@ bool FilterInstance::setState(const std::string& base64)
     if (!block.fromBase64Encoding(juce::String(base64)))
         return false;
 
-    // Validate before handing to the processor so callers learn about bad data.
+    // Validate before handing to the processor so callers learn about bad data
     auto xml = juce::AudioProcessor::getXmlFromBinary(block.getData(), (int)block.getSize());
     if (xml == nullptr || !xml->hasTagName(StageMicProcessor::stateTag))
         return false;

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-// The module panels in the lower half of the StageMic window.
+// The module panels in the lower half of the StageMic window
 #pragma once
 
 #include "ui/Displays.h"
@@ -11,7 +11,6 @@
 namespace stagemic
 {
 
-/** Gate / expander: threshold fader with Range, Release and Ratio knobs beside it. */
 class GateStrip final : public Section
 {
 public:
@@ -57,12 +56,10 @@ private:
     SmallKnob ratio, attack, release, makeup, mix;
 };
 
-/** Compact row: title on the left, knobs to the right (used for the Limiter). */
 class EffectRow final : public Section
 {
 public:
-    EffectRow(APVTS&, ModuleId module, std::initializer_list<std::pair<const char*, const char*>> knobs,
-              bool showReduction = false);
+    EffectRow(APVTS&, ModuleId module, std::initializer_list<std::pair<const char*, const char*>> knobs, bool showReduction = false);
     void updateActivity(const dsp::VocalChain::Activity&) override;
 
 private:
@@ -72,8 +69,7 @@ private:
     std::unique_ptr<ReductionMeter> reduction;
 };
 
-/** Several modules sharing one panel, one tab each (e.g. Chorus / Delay / Reverb).
-    Every tab has its own power switch, so all of them can run at once. */
+// Several modules sharing one panel, one tab each
 class TabbedModules final : public juce::Component
 {
 public:

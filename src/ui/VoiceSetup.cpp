@@ -103,7 +103,7 @@ void VoiceSetup::setStep(Step s)
             {
                 primary.setButtonText("Apply");
                 primary.onClick = [this] {
-                    // First time: the preset for what they mostly do, then their mic settings.
+                    // First time
                     if (welcome && chosenUse >= 0)
                         processor.getPresetManager().loadFactoryPreset(uses[chosenUse].preset);
                     processor.applyVoiceSetup(result);
@@ -150,8 +150,7 @@ juce::StringArray VoiceSetup::describe(const VoiceAnalyzer::Result& r, float cur
     out.add("Gate opens at:  " + db(r.gateThresholdDb, 0) + (r.gateRatio > 2.0f ? "  (firmer, to hide the room noise)" : ""));
     out.add(r.sibilantHz > 0.0f ? "Your \"s\" sounds sit around " + juce::String(r.sibilantHz / 1000.0f, 1) + " kHz (De-Ess set there)"
                                 : "Not enough \"s\" sounds to tune the De-Ess (it stays as it is)");
-    out.add("Room noise:  " + db(r.noiseDb, 0) + "   Voice:  " + db(r.voiceDb, 0)
-            + (r.noisy ? "   (noisy room)" : "   (good)"));
+    out.add("Room noise:  " + db(r.noiseDb, 0) + "   Voice:  " + db(r.voiceDb, 0) + (r.noisy ? "   (noisy room)" : "   (good)"));
     if (r.clipped)
         out.add("! Your mic clipped. Turn the gain knob on your audio interface down a bit and try again.");
     if (r.veryQuiet)
@@ -169,7 +168,7 @@ juce::Rectangle<int> VoiceSetup::card() const
 
 void VoiceSetup::resized()
 {
-    // First time: the three "what do you mostly do" choices, above the main buttons.
+    // First time
     {
         auto row = card().reduced(24).withTrimmedBottom(46).removeFromBottom(32);
         const int w = (row.getWidth() - 16) / 3;
@@ -216,7 +215,8 @@ void VoiceSetup::paint(juce::Graphics& g)
         bodyText("Takes about 11 seconds. Use the mic and position you stream with.", 14.0f, theme::dimText);
         area.removeFromTop(6);
         bodyText("1.  Stay quiet for 3 seconds (it listens to the room).");
-        bodyText(welcome ? "2.  Then sing, talk or whisper like on stream for 8 seconds," : "2.  Then sing or talk like on stream for 8 seconds,");
+        bodyText(welcome ? "2.  Then sing, talk or whisper like on stream for 8 seconds,"
+                         : "2.  Then sing or talk like on stream for 8 seconds,");
         {
             const auto full = area;
             area.removeFromLeft(22);
@@ -231,9 +231,10 @@ void VoiceSetup::paint(juce::Graphics& g)
         {
             g.setColour(theme::text);
             g.setFont(theme::font(13.5f, true));
-            g.drawText("What do you mostly do on stream?",
-                       juce::Rectangle<int>(useButtons[0].getX(), useButtons[0].getY() - 26, useButtons[2].getRight() - useButtons[0].getX(), 22),
-                       juce::Justification::centredLeft);
+            g.drawText(
+                "What do you mostly do on stream?",
+                juce::Rectangle<int>(useButtons[0].getX(), useButtons[0].getY() - 26, useButtons[2].getRight() - useButtons[0].getX(), 22),
+                juce::Justification::centredLeft);
         }
         return;
     }

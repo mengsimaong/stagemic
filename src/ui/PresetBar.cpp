@@ -31,8 +31,16 @@ PresetBar::PresetBar(StageMicProcessor& p)
     }
     simpleButton.setTooltip("Simple: just the controls that matter most");
     advancedButton.setTooltip("Advanced: every module, the EQ graph, the signal chain and all settings");
-    simpleButton.onClick = [this] { setMode(false); if (onModeChanged) onModeChanged(false); };
-    advancedButton.onClick = [this] { setMode(true); if (onModeChanged) onModeChanged(true); };
+    simpleButton.onClick = [this] {
+        setMode(false);
+        if (onModeChanged)
+            onModeChanged(false);
+    };
+    advancedButton.onClick = [this] {
+        setMode(true);
+        if (onModeChanged)
+            onModeChanged(true);
+    };
     voiceButton.getProperties().set("primary", true);
     voiceButton.setColour(juce::TextButton::textColourOffId, juce::Colours::white);
     voiceButton.onClick = [this] {
@@ -92,7 +100,7 @@ void PresetBar::refresh()
 
 int PresetBar::currentIndex() const
 {
-    // Prefer the user's own preset if a factory preset has the same name.
+    // Prefer the user's own preset if a factory preset has the same name
     const auto name = processor.getCurrentPresetName();
     for (int i = entries.size(); --i >= 0;)
         if (entries[i].name == name)
@@ -194,7 +202,8 @@ void PresetBar::importPreset()
 {
     const auto downloads = juce::File::getSpecialLocation(juce::File::userHomeDirectory).getChildFile("Downloads");
     chooser = std::make_unique<juce::FileChooser>(
-        "Import a StageMic preset", downloads.isDirectory() ? downloads : juce::File::getSpecialLocation(juce::File::userDocumentsDirectory),
+        "Import a StageMic preset",
+        downloads.isDirectory() ? downloads : juce::File::getSpecialLocation(juce::File::userDocumentsDirectory),
         juce::String("*") + PresetManager::fileExtension);
     juce::Component::SafePointer<PresetBar> safe(this);
     chooser->launchAsync(juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
@@ -214,13 +223,14 @@ void PresetBar::importPreset()
 
 void PresetBar::exportPreset()
 {
-    const auto suggested = juce::File::getSpecialLocation(juce::File::userDesktopDirectory)
-                               .getChildFile(juce::File::createLegalFileName(processor.getCurrentPresetName()) + PresetManager::fileExtension);
+    const auto suggested =
+        juce::File::getSpecialLocation(juce::File::userDesktopDirectory)
+            .getChildFile(juce::File::createLegalFileName(processor.getCurrentPresetName()) + PresetManager::fileExtension);
     chooser = std::make_unique<juce::FileChooser>("Export this sound as a preset file", suggested,
                                                   juce::String("*") + PresetManager::fileExtension);
     juce::Component::SafePointer<PresetBar> safe(this);
-    chooser->launchAsync(juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::canSelectFiles
-                             | juce::FileBrowserComponent::warnAboutOverwriting,
+    chooser->launchAsync(juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::canSelectFiles |
+                             juce::FileBrowserComponent::warnAboutOverwriting,
                          [safe](const juce::FileChooser& fc) {
                              if (safe == nullptr || fc.getResult() == juce::File())
                                  return;
@@ -276,10 +286,18 @@ void PresetBar::showMenu()
             return;
         switch (result)
         {
-            case 1: safe->saveAs(); break;
-            case 2: safe->importPreset(); break;
-            case 3: safe->exportPreset(); break;
-            case 4: safe->deleteCurrent(); break;
+            case 1:
+                safe->saveAs();
+                break;
+            case 2:
+                safe->importPreset();
+                break;
+            case 3:
+                safe->exportPreset();
+                break;
+            case 4:
+                safe->deleteCurrent();
+                break;
             case 5:
             {
                 const auto dir = safe->processor.getPresetManager().getPresetDirectory();
@@ -287,7 +305,8 @@ void PresetBar::showMenu()
                 dir.startAsProcess();
                 break;
             }
-            default: break;
+            default:
+                break;
         }
     });
 }
@@ -326,12 +345,13 @@ void PresetBar::paint(juce::Graphics& g)
 {
     auto logo = getLocalBounds().removeFromLeft(196).withTrimmedLeft(2).reduced(0, 4);
     {
-        // The neon head is drawn once into a picture (the glow is costly to draw).
+        // The neon head is drawn once into a picture
         const auto headArea = logo.removeFromLeft(38).toFloat().reduced(1.0f, 2.0f);
         if (logoImage.isNull())
         {
             constexpr float oversample = 3.0f;
-            logoImage = juce::Image(juce::Image::ARGB, (int)(headArea.getWidth() * oversample), (int)(headArea.getHeight() * oversample), true);
+            logoImage =
+                juce::Image(juce::Image::ARGB, (int)(headArea.getWidth() * oversample), (int)(headArea.getHeight() * oversample), true);
             juce::Graphics lg(logoImage);
             neoncat::paintHead(lg, logoImage.getBounds().toFloat(), theme::accent);
         }

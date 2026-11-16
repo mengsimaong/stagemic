@@ -1,15 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-//
-// stagemic_bench: stress test of the audio engine, the way OBS drives it.
-//
-//   stagemic_bench <voice recording> [seconds per run]
-//
-// 1. Cost: every factory preset plus "everything on", at 48 and 44.1 kHz,
-//    stereo, in OBS-sized blocks. Prints average CPU, the slowest 0.1% of
-//    blocks and the single slowest block, against OBS's deadline per block.
-// 2. Abuse: very hot input, knob storms, preset hopping, broken input (NaN),
-//    left-channel-only mics, odd block sizes, long silence after loud sound.
-//    Each must give finite output that never goes past 0 dBFS (the limiter).
+// stagemic_bench
 
 #include "core/FilterInstance.h"
 #include "core/StageMicProcessor.h"
@@ -19,9 +9,9 @@
 
 #include <algorithm>
 #include <chrono>
-#include <limits>
 #include <cmath>
 #include <cstdio>
+#include <limits>
 #include <random>
 
 using namespace stagemic;
@@ -30,8 +20,8 @@ namespace
 {
 using Clock = std::chrono::steady_clock;
 
-const char* allOn[] = {"gate_on", "lev_on", "eq_on", "ds_on", "comp_on", "mb_on", "sat_on",
-                       "ex_on",   "ch_on",  "dly_on", "rev_on", "lim_on", "tune_on"};
+const char* allOn[] = {"gate_on", "lev_on", "eq_on",  "ds_on",  "comp_on", "mb_on",  "sat_on",
+                       "ex_on",   "ch_on",  "dly_on", "rev_on", "lim_on",  "tune_on"};
 
 void set(StageMicProcessor& p, const juce::String& id, float value)
 {
@@ -54,10 +44,10 @@ struct Result
     float deadlineMs = 0;
 };
 
-/** Runs `audio` (stereo) through a fresh filter, like OBS: `block` frames per call. */
+// Runs `audio` through a fresh filter, like OBS: `block` frames per call
 template <typename PerBlock>
-Result run(const juce::AudioBuffer<float>& source, double sr, int seconds, const juce::String& preset, bool everything,
-           int block, int channels, PerBlock&& perBlock, float inputGainDb = 0.0f)
+Result run(const juce::AudioBuffer<float>& source, double sr, int seconds, const juce::String& preset, bool everything, int block,
+           int channels, PerBlock&& perBlock, float inputGainDb = 0.0f)
 {
     FilterInstance::Config cfg;
     cfg.sampleRate = sr;
@@ -125,8 +115,8 @@ auto none = [](StageMicProcessor&, std::vector<float>*, int, int, int, int) {};
 
 void printCost(const char* name, const Result& r)
 {
-    std::printf("  %-26s %5.2f%% cpu   slowest 0.1%% %5.2f ms   worst %5.2f ms  (deadline %4.1f)\n", name, r.meanPct, r.p999Ms,
-                r.maxMs, r.deadlineMs);
+    std::printf("  %-26s %5.2f%% cpu   slowest 0.1%% %5.2f ms   worst %5.2f ms  (deadline %4.1f)\n", name, r.meanPct, r.p999Ms, r.maxMs,
+                r.deadlineMs);
 }
 
 bool check(const char* name, const Result& r, float maxPeak = 1.0f)
@@ -160,8 +150,7 @@ int main(int argc, char* argv[])
     juce::AudioBuffer<float> voice(2, (int)reader->lengthInSamples);
     reader->read(&voice, 0, voice.getNumSamples(), 0, true, true);
 
-    // "cost" mode: a compact table for comparing two builds (best of 5 runs each, so a
-    // busy machine can't make one look slower): each module alone, then the presets.
+    // "cost" mode
     if (argc > 3 && juce::String(argv[3]) == "cost")
     {
         auto best = [&](const juce::String& preset, bool everything, auto&& perBlock) {
@@ -180,7 +169,8 @@ int main(int argc, char* argv[])
                         }
                     }));
         for (auto* module : allOn)
-            std::printf("  %-22s %6.3f\n", module, best({}, false, [module](StageMicProcessor& p, std::vector<float>*, int, int, int b, int) {
+            std::printf("  %-22s %6.3f\n", module,
+                        best({}, false, [module](StageMicProcessor& p, std::vector<float>*, int, int, int b, int) {
                             if (b == 0)
                             {
                                 for (auto* id : allOn)
@@ -195,67 +185,65 @@ int main(int argc, char* argv[])
         return 0;
     }
 
-    // --- 1. Cost ------------------------------------------------------------
     for (double sr : {48000.0, 44100.0})
     {
         std::printf("\nCOST at %.1f kHz, stereo, 1024-frame blocks (%d s of singing per run)\n", sr / 1000.0, seconds);
-        printCost("Bypass-ish (all off)", run(voice, sr, seconds, {}, false, 1024, 2,
-                                              [](StageMicProcessor& p, std::vector<float>*, int, int, int b, int) {
-                                                  if (b == 0)
-                                                      for (auto* id : allOn)
-                                                          set(p, id, 0.0f);
-                                              }));
+        printCost("Bypass-ish (all off)",
+                  run(voice, sr, seconds, {}, false, 1024, 2, [](StageMicProcessor& p, std::vector<float>*, int, int, int b, int) {
+                      if (b == 0)
+                          for (auto* id : allOn)
+                              set(p, id, 0.0f);
+                  }));
         for (const auto& name : PresetManager::getFactoryPresetNames())
             printCost(name.toRawUTF8(), run(voice, sr, seconds, name, false, 1024, 2, none));
         printCost("EVERYTHING ON (+Tune)", run(voice, sr, seconds, "Pop Tune", true, 1024, 2, none));
     }
 
-    // --- 2. Abuse -----------------------------------------------------------
     std::printf("\nABUSE (output must stay finite and at or under 0 dBFS)\n");
     bool ok = true;
     std::mt19937 rng(1234);
 
-    ok &= check("Hot input (+24 dB input gain), everything on",
-                run(voice, 48000, seconds, "Karaoke Star", true, 1024, 2, none, 24.0f));
-    ok &= check("Full-scale square wave, everything on",
-                run(voice, 48000, 10, "Pop Tune", true, 1024, 2, [](StageMicProcessor&, std::vector<float>* b, int ch, int n, int, int pos) {
-                    for (int c = 0; c < ch; ++c)
-                        for (int i = 0; i < n; ++i)
-                            b[c][(size_t)i] = ((pos + i) / 50) % 2 ? 1.0f : -1.0f;
-                }));
-    ok &= check("Knob storm: 8 random settings changed every block",
-                run(voice, 48000, seconds, "Karaoke Star", true, 1024, 2,
-                    [&rng](StageMicProcessor& p, std::vector<float>*, int, int, int, int) {
-                        std::uniform_real_distribution<float> u(0.0f, 1.0f);
-                        for (int k = 0; k < 8; ++k)
-                            if (auto* param = randomParam(p, rng))
-                                param->setValueNotifyingHost(u(rng));
-                    }));
+    ok &= check("Hot input (+24 dB input gain), everything on", run(voice, 48000, seconds, "Karaoke Star", true, 1024, 2, none, 24.0f));
+    ok &= check("Full-scale square wave, everything on", run(voice, 48000, 10, "Pop Tune", true, 1024, 2,
+                                                             [](StageMicProcessor&, std::vector<float>* b, int ch, int n, int, int pos) {
+                                                                 for (int c = 0; c < ch; ++c)
+                                                                     for (int i = 0; i < n; ++i)
+                                                                         b[c][(size_t)i] = ((pos + i) / 50) % 2 ? 1.0f : -1.0f;
+                                                             }));
+    ok &= check(
+        "Knob storm: 8 random settings changed every block",
+        run(voice, 48000, seconds, "Karaoke Star", true, 1024, 2, [&rng](StageMicProcessor& p, std::vector<float>*, int, int, int, int) {
+            std::uniform_real_distribution<float> u(0.0f, 1.0f);
+            for (int k = 0; k < 8; ++k)
+                if (auto* param = randomParam(p, rng))
+                    param->setValueNotifyingHost(u(rng));
+        }));
     {
         const auto names = PresetManager::getFactoryPresetNames();
-        ok &= check("Preset hopping every 100 ms",
-                    run(voice, 48000, seconds, {}, false, 480, 2,
-                        [&names](StageMicProcessor& p, std::vector<float>*, int, int, int b, int) {
-                            if (b % 10 == 0)
-                                p.getPresetManager().loadFactoryPreset(names[(b / 10) % names.size()]);
-                        }));
+        ok &= check("Preset hopping every 100 ms", run(voice, 48000, seconds, {}, false, 480, 2,
+                                                       [&names](StageMicProcessor& p, std::vector<float>*, int, int, int b, int) {
+                                                           if (b % 10 == 0)
+                                                               p.getPresetManager().loadFactoryPreset(names[(b / 10) % names.size()]);
+                                                       }));
     }
     {
-        // A broken source or filter before us sends one block of NaN; afterwards the voice must come back.
-        auto r = run(voice, 48000, 10, "Pop Tune", true, 1024, 2, [](StageMicProcessor&, std::vector<float>* b, int ch, int n, int blk, int) {
-            if (blk == 20)
-                for (int c = 0; c < ch; ++c)
-                    for (int i = 0; i < n; ++i)
-                        b[c][(size_t)i] = (i % 3 == 0) ? std::numeric_limits<float>::quiet_NaN() : std::numeric_limits<float>::infinity();
-        });
+        // A broken source or filter before us sends one block of NaN; afterwards
+        auto r =
+            run(voice, 48000, 10, "Pop Tune", true, 1024, 2, [](StageMicProcessor&, std::vector<float>* b, int ch, int n, int blk, int) {
+                if (blk == 20)
+                    for (int c = 0; c < ch; ++c)
+                        for (int i = 0; i < n; ++i)
+                            b[c][(size_t)i] =
+                                (i % 3 == 0) ? std::numeric_limits<float>::quiet_NaN() : std::numeric_limits<float>::infinity();
+            });
         std::printf("  %-44s %s  non-finite samples out: %lld (one bad block in = %d samples)\n", "NaN/inf input for one block",
                     r.nonFinite <= 2048 ? "ok  " : "FAIL", (long long)r.nonFinite, 2048);
         ok &= r.nonFinite <= 2048;
     }
-    ok &= check("Mic on the left channel only (right silent)",
-                run(voice, 48000, seconds, "Karaoke Star", false, 1024, 2, [](StageMicProcessor&, std::vector<float>* b, int, int n, int, int) {
-                    std::fill(b[1].begin(), b[1].begin() + n, 0.0f);
-                }));
+    ok &= check("Mic on the left channel only (right silent)", run(voice, 48000, seconds, "Karaoke Star", false, 1024, 2,
+                                                                   [](StageMicProcessor&, std::vector<float>* b, int, int n, int, int) {
+                                                                       std::fill(b[1].begin(), b[1].begin() + n, 0.0f);
+                                                                   }));
     for (int block : {1, 7, 480, 1024, 4096})
     {
         char name[64];
@@ -265,13 +253,14 @@ int main(int argc, char* argv[])
     ok &= check("Mono output setting (1 channel)", run(voice, 48000, 10, "Pop Tune", true, 1024, 1, none));
     ok &= check("5.1 output setting (6 channels)", run(voice, 48000, 10, "Pop Tune", true, 1024, 6, none));
     {
-        // Loud, then 20 s of digital silence then near-silence: tails decay into tiny numbers (denormals) and must stay cheap.
-        auto r = run(voice, 48000, 30, "Concert Hall", true, 1024, 2, [](StageMicProcessor&, std::vector<float>* b, int ch, int n, int, int pos) {
-            if (pos > 48000 * 5)
-                for (int c = 0; c < ch; ++c)
-                    for (int i = 0; i < n; ++i)
-                        b[c][(size_t)i] = pos > 48000 * 20 ? 1e-30f : 0.0f;
-        });
+        // Loud, then 20 s of digital silence then near-silence
+        auto r = run(voice, 48000, 30, "Concert Hall", true, 1024, 2,
+                     [](StageMicProcessor&, std::vector<float>* b, int ch, int n, int, int pos) {
+                         if (pos > 48000 * 5)
+                             for (int c = 0; c < ch; ++c)
+                                 for (int i = 0; i < n; ++i)
+                                     b[c][(size_t)i] = pos > 48000 * 20 ? 1e-30f : 0.0f;
+                     });
         ok &= check("Loud then 25 s silence (denormal trap)", r);
         std::printf("      average %.2f%% cpu over the silence run\n", r.meanPct);
     }

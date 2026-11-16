@@ -9,18 +9,16 @@
 namespace stagemic
 {
 
-/** Hands a mono copy of the output from the audio thread to the UI's spectrum
-    analyzer. Lock-free single-producer/single-consumer; costs nothing while no
-    analyzer is open (the audio thread checks one flag). */
+// Hands a mono copy of the output from the audio thread to the UI's
 class SpectrumTap
 {
 public:
     static constexpr int capacity = 8192;
 
-    /** UI: switch collection on while an analyzer is visible. */
+    // UI: switch collection on while an analyzer is visible
     void setActive(bool shouldBeActive) noexcept { active.store(shouldBeActive, std::memory_order_relaxed); }
 
-    /** Audio thread. Mixes up to two channels to mono. Drops samples if the UI falls behind. */
+    // Audio thread
     void push(const float* const* channels, int numChannels, int numSamples) noexcept
     {
         if (!active.load(std::memory_order_relaxed) || numChannels <= 0)
@@ -42,7 +40,7 @@ public:
         fifo.finishedWrite(size1 + size2);
     }
 
-    /** UI thread. Copies up to maxSamples of the newest audio into dest; returns how many. */
+    // UI thread
     int pull(float* dest, int maxSamples) noexcept
     {
         int start1, size1, start2, size2;

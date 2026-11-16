@@ -47,7 +47,7 @@ void SimpleTile::resized()
     auto area = getLocalBounds().withTrimmedTop(36).withTrimmedBottom(30).reduced(6, 0);
     if (knobs.empty())
         return;
-    // Same knob size everywhere, however big the tile is.
+    // Same knob size everywhere, however big the tile is
     const int w = area.getWidth() / (int)knobs.size();
     for (auto& k : knobs)
         k->setBounds(area.removeFromLeft(w).withSizeKeepingCentre(juce::jmin(w - 4, 120), juce::jmin(area.getHeight(), 132)));
@@ -70,8 +70,8 @@ SimpleView::SimpleView(APVTS& s, const dsp::Tune& tune)
     , scale(s, pid::tuneScale, "Scale")
     , voice(s, pid::tuneVoice, "Voice")
 {
-    for (auto* c : std::initializer_list<juce::Component*>{&cleanUp, &tone, &compress, &deEss, &warmth, &reverb, &echo, &chorus,
-                                                           &tunePower, &tuneDisplay, &key, &scale, &voice})
+    for (auto* c : std::initializer_list<juce::Component*>{&cleanUp, &tone, &compress, &deEss, &warmth, &reverb, &echo, &chorus, &tunePower,
+                                                           &tuneDisplay, &key, &scale, &voice})
         addAndMakeVisible(c);
     for (auto* c : std::initializer_list<juce::Component*>{&tunePower, &key, &scale, &voice})
         theme::setTint(*c, theme::family(ModuleId::Tune));
@@ -106,14 +106,14 @@ void SimpleView::resized()
     auto area = getLocalBounds();
     constexpr int gap = 8, rowHeight = 218;
 
-    // Three rows: Voice, Effects (same grid of tiles, so they line up), Tune.
+    // Three rows
     voiceCard = area.removeFromTop(rowHeight);
     area.removeFromTop(gap);
     effectsCard = area.removeFromTop(rowHeight);
     area.removeFromTop(gap);
     tuneCard = area;
 
-    // Six equal units per row; tiles with two knobs take two.
+    // Six equal units per row
     auto layoutRow = [](juce::Rectangle<int> card, std::initializer_list<std::pair<SimpleTile*, int>> tiles) {
         auto row = card.withTrimmedTop(28).reduced(10, 0).withTrimmedBottom(10);
         const int unit = (row.getWidth() - 5 * gap) / 6;
@@ -126,7 +126,7 @@ void SimpleView::resized()
     layoutRow(voiceCard, {{&cleanUp, 1}, {&tone, 2}, {&compress, 1}, {&deEss, 1}, {&warmth, 1}});
     layoutRow(effectsCard, {{&reverb, 2}, {&echo, 2}, {&chorus, 2}});
 
-    // Tune: on/off, a wide pitch graph with the style buttons, and Key / Scale / Voice beside it.
+    // Tune
     {
         tunePower.setBounds(tuneCard.getX() + 14, tuneCard.getY() + 5, 22, 20);
         auto inner = tuneCard.withTrimmedTop(28).reduced(8, 0).withTrimmedBottom(8);

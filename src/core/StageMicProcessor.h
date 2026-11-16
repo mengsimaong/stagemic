@@ -14,13 +14,6 @@ namespace stagemic
 
 class PresetManager;
 
-/** The StageMic audio engine.
-
-    A standard JUCE AudioProcessor with no knowledge of OBS, so the exact same
-    engine runs inside OBS (via FilterInstance) and as a VST3.
-
-    Signal flow: input gain -> built-in chain (VocalChain) -> output gain.
-    Everything is zero-latency. */
 class StageMicProcessor final : public juce::AudioProcessor
 {
 public:
@@ -65,47 +58,44 @@ public:
     dsp::VocalChain& getChain() noexcept { return chain; }
     PresetManager& getPresetManager() noexcept { return *presetManager; }
 
-    /** Sound settings only (parameters + module order) as a preset document. */
+    // Sound settings only as a preset document
     std::unique_ptr<juce::XmlElement> createPresetXml(const juce::String& presetName);
-    /** Applies a preset document. Missing settings fall back to defaults. Returns false for non-presets. */
+    // Applies a preset document
     bool applyPresetXml(const juce::XmlElement& xml);
 
-    /** Sets every setting back to its default (the "Clean Vocal" sound). */
+    // Sets every setting back to its default
     void resetToDefaults();
 
-    /** Name of the last loaded/saved preset. Message thread only. */
+    // Name of the last loaded/saved preset
     juce::String getCurrentPresetName() const { return currentPresetName; }
     void setCurrentPresetName(const juce::String& name) { currentPresetName = name; }
 
     SpectrumTap& getSpectrumTap() noexcept { return spectrum; }
 
-    /** "Set up my voice". Once applied, the mic settings it chose (input gain, gate
-        threshold, de-esser frequency) stay as they are when presets change. */
+    // "Set up my voice"
     VoiceAnalyzer& getVoiceAnalyzer() noexcept { return voiceAnalyzer; }
     void applyVoiceSetup(const VoiceAnalyzer::Result&);
     bool hasVoiceSetup() const noexcept { return voiceSetupDone; }
 
-    /** Window layout: Simple (default) or Advanced. Saved with the OBS scene. Message thread. */
+    // Window layout
     bool isAdvancedMode() const noexcept { return advancedMode; }
     void setAdvancedMode(bool on) { advancedMode = on; }
-    /** The window width the user last chose (0 = never resized), saved with the settings. */
+    // The window width the user last chose, saved with the settings
     int getEditorWidth() const noexcept { return editorWidth; }
     void setEditorWidth(int width) noexcept { editorWidth = width; }
     void clearVoiceSetup() { voiceSetupDone = false; }
-    /** "Before / After": while true, the mic is heard without StageMic (a quick fade
-        in and out, no clicks). Any thread. The stream hears it too. */
+    // "Before / After"
     void setHearBefore(bool on) noexcept { hearBefore.store(on, std::memory_order_relaxed); }
     bool isHearingBefore() const noexcept { return hearBefore.load(std::memory_order_relaxed); }
 
-    /** "Set up my voice" opens by itself the first time the window opens (once). */
+    // "Set up my voice" opens by itself the first time the window opens
     bool wasVoiceSetupOffered() const noexcept { return voiceSetupOffered; }
     void setVoiceSetupOffered() noexcept { voiceSetupOffered = true; }
-    /** The settings kept across presets once the voice is set up. */
+    // The settings kept across presets once the voice is set up
     static constexpr const char* micSettings[] = {pid::inGain, pid::gateThreshold, pid::gateRatio, pid::dsFreq};
     LevelMeter& getInputMeter() noexcept { return inputMeter; }
     LevelMeter& getOutputMeter() noexcept { return outputMeter; }
 
-    /** Free text shown in the editor, e.g. "OBS Studio 31.1.1". Set once, before the editor opens. */
     void setHostDescription(const juce::String& text) { hostDescription = text; }
     const juce::String& getHostDescription() const noexcept { return hostDescription; }
 
@@ -127,19 +117,19 @@ private:
     std::atomic<float>* outGain = nullptr;
     juce::SmoothedValue<float> inGainSmooth, outGainSmooth;
     float safetyEnvelope = 0.0f, safetyRelease = 0.9999f; // the last-line safety limiter
-    // Before / After: the untouched mic of this sub-block, and how much of it is heard (0..1).
+    // Before / After
     std::atomic<bool> hearBefore{false};
     float beforeMix = 0.0f, beforeStep = 0.002f;
     float dryCopy[dsp::kMaxChannels][dsp::VocalChain::kSubBlock]{};
-    // One-sided mic fix: many audio interfaces put the mic on the left channel only.
     void fixOneSidedMic(float* const* ch, int numChannels, int n) noexcept;
     float sideEnergy[2] = {}, sideSmoothing = 0.99f;
     int oneSidedSamples = 0, mirrorFrom = -1;
-public:
-    /** Which channel is being copied to the other (-1 = none), for the tests and the UI. */
-    int getMirroredChannel() const noexcept { return mirrorFrom; }
-private:
 
+public:
+    // Which channel is being copied to the other, for the tests and the UI
+    int getMirroredChannel() const noexcept { return mirrorFrom; }
+
+private:
     LevelMeter inputMeter;
     LevelMeter outputMeter;
     SpectrumTap spectrum;

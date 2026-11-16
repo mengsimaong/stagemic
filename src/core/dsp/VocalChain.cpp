@@ -18,19 +18,32 @@ VocalChain::VocalChain(juce::AudioProcessorValueTreeState& state)
     auto make = [&](ModuleId id) -> std::unique_ptr<Module> {
         switch (id)
         {
-            case ModuleId::Gate: return std::make_unique<Gate>(state);
-            case ModuleId::Equalizer: return std::make_unique<Equalizer>(state);
-            case ModuleId::Leveler: return std::make_unique<Leveler>(state);
-            case ModuleId::DeEsser: return std::make_unique<DeEsser>(state, deEsserListen);
-            case ModuleId::Compressor: return std::make_unique<Compressor>(state);
-            case ModuleId::Multiband: return std::make_unique<MultibandCompressor>(state);
-            case ModuleId::Saturation: return std::make_unique<Saturation>(state);
-            case ModuleId::Exciter: return std::make_unique<Exciter>(state);
-            case ModuleId::Chorus: return std::make_unique<Chorus>(state);
-            case ModuleId::Delay: return std::make_unique<Delay>(state);
-            case ModuleId::Reverb: return std::make_unique<Reverb>(state);
-            case ModuleId::Limiter: return std::make_unique<Limiter>(state);
-            case ModuleId::Tune: return std::make_unique<Tune>(state);
+            case ModuleId::Gate:
+                return std::make_unique<Gate>(state);
+            case ModuleId::Equalizer:
+                return std::make_unique<Equalizer>(state);
+            case ModuleId::Leveler:
+                return std::make_unique<Leveler>(state);
+            case ModuleId::DeEsser:
+                return std::make_unique<DeEsser>(state, deEsserListen);
+            case ModuleId::Compressor:
+                return std::make_unique<Compressor>(state);
+            case ModuleId::Multiband:
+                return std::make_unique<MultibandCompressor>(state);
+            case ModuleId::Saturation:
+                return std::make_unique<Saturation>(state);
+            case ModuleId::Exciter:
+                return std::make_unique<Exciter>(state);
+            case ModuleId::Chorus:
+                return std::make_unique<Chorus>(state);
+            case ModuleId::Delay:
+                return std::make_unique<Delay>(state);
+            case ModuleId::Reverb:
+                return std::make_unique<Reverb>(state);
+            case ModuleId::Limiter:
+                return std::make_unique<Limiter>(state);
+            case ModuleId::Tune:
+                return std::make_unique<Tune>(state);
         }
         return {};
     };
@@ -116,8 +129,7 @@ void VocalChain::process(float* const* ch, int numChannels, int n) noexcept
 
     const bool snap = snapRequested.exchange(false, std::memory_order_acq_rel);
 
-    // A new order is applied click-free: this block fades out with the old order,
-    // the next one fades back in with the new order (about 1.3 ms each).
+    // A new order is applied click-free
     const auto requested = packedOrder.load(std::memory_order_acquire);
     float outputRampFrom = 1.0f, outputRampTo = 1.0f;
     if (snap)
@@ -127,19 +139,19 @@ void VocalChain::process(float* const* ch, int numChannels, int n) noexcept
     }
     else if (reorderFadingOut)
     {
-        activeOrder = requested; // second half: fade in with the new order
+        activeOrder = requested; // second half
         reorderFadingOut = false;
         outputRampFrom = 0.0f;
     }
     else if (requested != activeOrder)
     {
-        reorderFadingOut = true; // first half: fade out with the old order
+        reorderFadingOut = true; // first half
         outputRampTo = 0.0f;
     }
     const auto order = unpack(activeOrder);
     bool returnsPending = false;
 
-    // Adds the summed send effects back onto the voice.
+    // Adds the summed send effects back onto the voice
     auto flushReturns = [&] {
         if (!returnsPending)
             return;
@@ -166,7 +178,7 @@ void VocalChain::process(float* const* ch, int numChannels, int n) noexcept
         }
         else if (wanted && !slot.active)
         {
-            // Switching on: start from a clean state and fade in.
+            // Switching on
             slot.module->reset();
             slot.module->update(true);
             slot.active = true;
@@ -175,7 +187,7 @@ void VocalChain::process(float* const* ch, int numChannels, int n) noexcept
 
         const bool isSend = slot.module->isSend();
         if (!isSend)
-            flushReturns(); // the next insert hears the voice plus all effects so far
+            flushReturns(); // the next insert hears the voice plus all
 
         if (!slot.active)
             continue;
@@ -188,7 +200,7 @@ void VocalChain::process(float* const* ch, int numChannels, int n) noexcept
 
         if (isSend)
         {
-            // Parallel effect: feed it a copy of the (dry) voice, collect its output.
+            // Parallel effect
             float* send[kMaxChannels] = {sendBuffer[0], sendBuffer[1]};
             for (int c = 0; c < numChannels; ++c)
                 std::copy(ch[c], ch[c] + n, sendBuffer[c]);
@@ -217,12 +229,12 @@ void VocalChain::process(float* const* ch, int numChannels, int n) noexcept
 
         if (slot.fade == target)
         {
-            // Fully on (fully off modules were skipped above).
+            // Fully on
             slot.module->process(ch, numChannels, n);
             continue;
         }
 
-        // Crossfading between the dry input and the module's output.
+        // Crossfading between the dry input and the module's output
         for (int c = 0; c < numChannels; ++c)
             std::copy(ch[c], ch[c] + n, dry[c]);
 
@@ -238,7 +250,7 @@ void VocalChain::process(float* const* ch, int numChannels, int n) noexcept
 
         slot.fade = fade;
         if (fade <= 0.0f)
-            slot.active = false; // fully off: stop spending CPU on it
+            slot.active = false; // fully off
     }
 
     flushReturns();
@@ -258,12 +270,10 @@ void VocalChain::process(float* const* ch, int numChannels, int n) noexcept
 //==============================================================================
 VocalChain::Order VocalChain::defaultOrder() noexcept
 {
-    // The recommended vocal chain. Tune right after the Gate, on the cleanest voice
-    // (pitch detection likes that). De-Ess comes after Compressor, Warmth and Air,
-    // so it also catches the "s" sounds those stages bring back up.
-    return {ModuleId::Gate,       ModuleId::Tune,      ModuleId::Equalizer, ModuleId::Leveler, ModuleId::Compressor,
-            ModuleId::Multiband,  ModuleId::Saturation, ModuleId::Exciter, ModuleId::DeEsser,
-            ModuleId::Chorus,     ModuleId::Delay,      ModuleId::Reverb,  ModuleId::Limiter};
+    // The recommended vocal chain
+    return {ModuleId::Gate,      ModuleId::Tune,       ModuleId::Equalizer, ModuleId::Leveler, ModuleId::Compressor,
+            ModuleId::Multiband, ModuleId::Saturation, ModuleId::Exciter,   ModuleId::DeEsser, ModuleId::Chorus,
+            ModuleId::Delay,     ModuleId::Reverb,     ModuleId::Limiter};
 }
 
 juce::String VocalChain::legacyDefaultOrderString()
@@ -328,9 +338,7 @@ std::optional<VocalChain::Order> VocalChain::orderFromString(const juce::String&
     keys.trim();
     keys.removeEmptyStrings();
 
-    // Older presets may not know about newer modules: keep the ones they list in
-    // their order, and put each missing module right after the module it
-    // normally follows (e.g. Auto Level after EQ), so it lands somewhere sensible.
+    // Older presets may not know about newer modules
     std::vector<ModuleId> list;
     std::array<bool, kNumModules> used{};
 
@@ -359,7 +367,7 @@ std::optional<VocalChain::Order> VocalChain::orderFromString(const juce::String&
         if (used[(size_t)id])
             continue;
 
-        auto insertAt = list.begin(); // no listed predecessor: goes first
+        auto insertAt = list.begin(); // no listed predecessor
         for (size_t j = i; j-- > 0;)
         {
             const auto found = std::find(list.begin(), list.end(), defaults[j]);

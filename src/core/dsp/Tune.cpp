@@ -117,13 +117,21 @@ void Tune::update(bool) noexcept
     amount = std::clamp(load(amountParam) * 0.01f, 0.0f, 1.0f);
     formantRatio = std::pow(2.0f, std::clamp(load(formantParam), -5.0f, 5.0f) / 12.0f);
     transpose = std::clamp(std::round(load(transposeParam)), -12.0f, 12.0f);
-    // Voice type: the range the detector looks in. Keeping it to the singer's range stops
-    // vocal fry and breath (which can show half the pitch) from reading an octave low.
+    // Voice type
     switch (std::clamp((int)std::lround(load(voiceParam)), 0, 2))
     {
-        case 0: voiceMinHz = 200.0; voiceMaxHz = 1100.0; break; // High (female)
-        case 2: voiceMinHz = 80.0;  voiceMaxHz = 500.0;  break; // Low (male)
-        default: voiceMinHz = 100.0; voiceMaxHz = 800.0; break; // Mid
+        case 0:
+            voiceMinHz = 200.0;
+            voiceMaxHz = 1100.0;
+            break; // High
+        case 2:
+            voiceMinHz = 80.0;
+            voiceMaxHz = 500.0;
+            break; // Low
+        default:
+            voiceMinHz = 100.0;
+            voiceMaxHz = 800.0;
+            break; // Mid
     }
 }
 
@@ -137,7 +145,7 @@ float Tune::inputAt(int c, double t) const noexcept
 }
 
 //==============================================================================
-// Pitch detection: YIN on the downsampled voice, refined at full rate.
+// Pitch detection
 void Tune::detect() noexcept
 {
     const int n = kWindow + decTauMax;
@@ -149,8 +157,7 @@ void Tune::detect() noexcept
     float energy = 0.0f;
     for (int j = 0; j < kWindow; ++j)
         energy += d(j) * d(j);
-    // Only trust a window filled by a steady voice: at a note's start (part silence,
-    // part a fast-growing voice) this kind of detector easily reads an octave low.
+    // Only trust a window filled by a steady voice
     float older = 0.0f, newer = 0.0f;
     for (int j = 0; j < n / 2; ++j)
         older += d(j) * d(j);
@@ -163,7 +170,7 @@ void Tune::detect() noexcept
     bool voiced = false;
     if (loudEnough)
     {
-        // Cumulative mean normalised difference.
+        // Cumulative mean normalised difference
         yin[0] = 1.0f;
         float running = 0.0f;
         for (int tau = 1; tau <= decTauMax; ++tau)
@@ -178,7 +185,7 @@ void Tune::detect() noexcept
             yin[(size_t)tau] = running > 0.0f ? diff * (float)tau / running : 1.0f;
         }
 
-        // Search only the chosen voice type's range (Voice: High / Mid / Low).
+        // Search only the chosen voice type's range
         const double decRate = sr / decimation;
         const int searchMin = std::max(decTauMin, (int)(decRate / voiceMaxHz));
         const int searchMax = std::min(decTauMax, (int)(decRate / voiceMinHz) + 1);
@@ -193,7 +200,7 @@ void Tune::detect() noexcept
             }
         if (best < 0)
         {
-            // No clear dip: accept the deepest one only if it's still fairly clear.
+            // No clear dip
             int deepest = searchMin;
             for (int tau = searchMin; tau < searchMax; ++tau)
                 if (yin[(size_t)tau] < yin[(size_t)deepest])
@@ -202,10 +209,7 @@ void Tune::detect() noexcept
                 best = deepest;
         }
 
-        // Octave check: if half this cycle length also fits nearly as well, the voice is
-        // really an octave higher (typical in the first moment of a note).
-        // (Repeated, for a reading two octaves low. A genuinely low voice doesn't fit at
-        // half its cycle length at all, so this only catches real mistakes.)
+        // Octave check
         while (best > 2 * searchMin)
         {
             const int halfTau = (best + 1) / 2;
@@ -225,7 +229,7 @@ void Tune::detect() noexcept
             const float denom = y0 - 2.0f * y1 + y2;
             const float coarse = ((float)best + (std::abs(denom) > 1.0e-9f ? 0.5f * (y0 - y2) / denom : 0.0f)) * (float)decimation;
 
-            // Refine at full rate around the coarse estimate.
+            // Refine at full rate around the coarse estimate
             const int window = kWindow * decimation;
             const int lo = std::max(minPeriod, (int)coarse - decimation - 1);
             const int hi = std::min(maxPeriod + decimation, (int)coarse + decimation + 2);
@@ -260,20 +264,15 @@ void Tune::detect() noexcept
         }
     }
 
-    // A single odd reading (a note's first moment, half of two notes in the window,
-    // a consonant) must never become a note. A new pitch counts only once two
-    // readings in a row agree on it; meanwhile the previous note is held.
+    // A single odd reading must never become a note
     auto semitonesApart = [](float p1, float p2) { return std::abs(12.0f * std::log2(p1 / p2)); };
-    // How long to hold through unclear readings: about 5 ms normally. With a one-note
-    // scale (the Robot voice) about 55 ms, so breathy or rough moments keep the robot
-    // drone instead of letting the real voice through (true silence still ends it).
+    // How long to hold through unclear readings
     const auto mask = scaleMasks[(size_t)scale];
     const bool oneNote = mask != 0 && (mask & (mask - 1)) == 0;
     const int maxMisses = oneNote ? 20 : 2;
     if (!voiced && confirmed > 0.0f && misses < maxMisses)
     {
-        // Unclear readings inside a sung note (a breathy moment): hold the
-        // note instead of flickering between "voice" and "breath".
+        // Unclear readings inside a sung note
         ++misses;
         period = confirmed;
         voiced = true;
@@ -285,7 +284,7 @@ void Tune::detect() noexcept
     }
     else if (confirmed > 0.0f && semitonesApart(period, confirmed) < 0.8f)
     {
-        confirmed = period; // smooth movement: vibrato, slides
+        confirmed = period; // smooth movement
         pending = 0.0f;
         misses = 0;
     }
@@ -300,10 +299,10 @@ void Tune::detect() noexcept
         if (confirmed > 0.0f)
             period = confirmed; // hold the previous note for now
         else
-            voiced = false;     // not started yet
+            voiced = false; // not started yet
     }
 
-    // The window describes roughly its own middle.
+    // The window describes roughly its own middle
     auto& point = track[(size_t)(trackWritten % kTrack)];
     point.time = now - (int64_t)(kWindow * decimation) / 2 - (int64_t)period / 2;
     point.period = period;
@@ -330,7 +329,7 @@ float Tune::periodAt(int64_t t, bool& voiced) const noexcept
 }
 
 //==============================================================================
-// Analysis marks: one per vocal cycle, on a consistent point of the wave.
+// Analysis marks
 void Tune::addMarks() noexcept
 {
     const int unvoicedHop = std::max(16, (int)(sr * 0.005));
@@ -352,10 +351,7 @@ void Tune::addMarks() noexcept
         const bool previousVoiced = marksWritten > 0 && marks[(size_t)((marksWritten - 1) % kMarks)].voiced;
         if (voiced && previousVoiced)
         {
-            // Find where this cycle best matches the previous one, so the marks sit on
-            // the same point of every cycle. (Jumping to the biggest peak instead lets
-            // marks hop between two similar peaks on a real voice; the grains then
-            // overlap out of step, partly cancel, and crackle.)
+            // Find where this cycle best matches the previous one
             auto similarity = [&](int64_t t) {
                 float xy = 0.0f, xx = 0.0f, yy = 0.0f;
                 for (int j = -half; j <= half; ++j)
@@ -375,8 +371,7 @@ void Tune::addMarks() noexcept
                     bestScore = score;
                     pos = t;
                 }
-            // Sub-sample refinement (a cycle is only ~55 samples at A5, so whole samples
-            // would be up to 30 cents off).
+            // Sub-sample refinement
             const float y0 = similarity(pos - 1), y2 = similarity(pos + 1);
             const float denom = y0 - 2.0f * bestScore + y2;
             const double frac = std::abs(denom) > 1.0e-9f ? std::clamp(0.5 * (y0 - y2) / denom, -0.5, 0.5) : 0.0;
@@ -386,7 +381,7 @@ void Tune::addMarks() noexcept
         }
         else if (voiced)
         {
-            // First cycle of a phrase: anchor on the strongest peak.
+            // First cycle of a phrase
             float best = -1.0e30f;
             for (int64_t t = predicted - search; t <= predicted + search; ++t)
                 if (const float v = lowMono[(size_t)(t & mask)]; v > best)
@@ -405,7 +400,7 @@ void Tune::addMarks() noexcept
 
 int Tune::markFor(double target) const noexcept
 {
-    // The analysis mark nearest the target whose whole grain has already been heard.
+    // Nearest mark whose grain is already complete
     int best = -1;
     double bestDistance = 1.0e18;
     const int oldest = std::max(0, marksWritten - kMarks + 1);
@@ -429,10 +424,7 @@ int Tune::markFor(double target) const noexcept
 
 void Tune::addGrain(double centre, double source, int left, int right, float readScale) noexcept
 {
-    // A Hann-shaped grain whose two halves can differ in length (the distance to the
-    // previous and to the next vocal cycle), so neighbouring grains add up to exactly 1.
-    // Positions are exact (sub-sample): when nothing is shifted, the grain reads
-    // exactly the samples it writes, with no interpolation blur.
+    // A Hann-shaped grain whose two halves can differ in length
     const int64_t outputPos = now - 1 - delay;
     const auto first = (int64_t)std::ceil(centre - (double)left), last = (int64_t)std::floor(centre + (double)right);
     for (int64_t t = first; t <= last; ++t)
@@ -456,8 +448,7 @@ void Tune::emitGrain() noexcept
     const int k = markFor(nextGrain);
     const Mark* m = k >= 0 ? &marks[(size_t)(k % kMarks)] : nullptr;
 
-    // A "voiced" cycle that is essentially silent (a note cut off, the detector still
-    // holding on) is treated as silence: nothing to tune there.
+    // A "voiced" cycle that is essentially silent is treated as silence
     bool audible = false;
     if (m != nullptr && m->voiced)
         for (int64_t t = m->pos - (int64_t)m->period; t <= m->pos + (int64_t)m->period && !audible; ++t)
@@ -465,14 +456,10 @@ void Tune::emitGrain() noexcept
 
     if (m == nullptr || !m->voiced || !audible)
     {
-        // Breath, "s", silence: rebuild the voice as it is, continuing from wherever the
-        // last voiced grain read (so there's no jump), easing back to "no offset".
-        // With a formant shift (the fun voices), these get the same shift as the sung
-        // parts, so an "s" or a breath sounds like it comes from the same changed voice
-        // instead of the original one. At 0 (every other preset) it's an exact copy.
+        // Breath, "s", silence
         const double source = nextGrain + readOffset;
         float scale = formantRatio;
-        if (scale > 1.0f) // reading faster reaches further ahead: never past what's been heard
+        if (scale > 1.0f) // reading faster reaches further ahead
             scale = std::max(1.0f, std::min(scale, (float)(((double)(now - 2) - source) / (double)unvoicedHalf)));
         addGrain(nextGrain, source, unvoicedHalf, unvoicedHalf, scale);
         readOffset -= std::clamp(readOffset, -0.1 * unvoicedHalf, 0.1 * unvoicedHalf);
@@ -482,7 +469,7 @@ void Tune::emitGrain() noexcept
         return;
     }
 
-    // Spacing of her actual cycles around this one (falls back to the detected period).
+    // Spacing of the actual cycles around this one
     auto voicedMark = [&](int index) -> const Mark* {
         if (index < std::max(0, marksWritten - kMarks + 1) || index >= marksWritten)
             return nullptr;
@@ -496,26 +483,23 @@ void Tune::emitGrain() noexcept
     const double before = prev != nullptr && plausible(m->exact - prev->exact) ? m->exact - prev->exact : period;
     const double after = next != nullptr && plausible(next->exact - m->exact) ? next->exact - m->exact : period;
 
-    // A phrase starts exactly on her first cycle (with no offset jump from the breath before).
+    // A phrase starts exactly on its first cycle
     if (!lastGrainVoiced && m->exact - readOffset - before > (double)(now - 1 - delay) + 1.0)
         nextGrain = m->exact - readOffset;
     readOffset = m->exact - nextGrain;
 
-    // Her actual cycle length here (what the grains are spaced by), not just the
-    // detector's estimate, so the correction lands exactly on the note.
-    // (The detector decides when they disagree: at a note jump the spacing is unreliable.)
+    // The actual cycle length here, not just the detector's estimate
     const double spacing = 0.5 * (before + after);
     const bool agree = std::abs(12.0 * std::log2(spacing / (double)period)) < 0.5;
     const float inputMidi = periodToMidi((float)(agree ? spacing : (double)period), sr);
 
-    // Which note to aim for (with a little hysteresis so it doesn't flip between two).
+    // Which note to aim for
     const int candidate = nearestNote(inputMidi, key, scaleMasks[(size_t)scale]);
-    if (currentNote < 0 || !lastGrainVoiced
-        || (candidate != currentNote && std::abs(inputMidi - (float)currentNote) > std::abs(inputMidi - (float)candidate) + 0.1f))
+    if (currentNote < 0 || !lastGrainVoiced ||
+        (candidate != currentNote && std::abs(inputMidi - (float)currentNote) > std::abs(inputMidi - (float)candidate) + 0.1f))
         currentNote = candidate;
 
     // Each phrase starts from the sung pitch and glides in at the set speed
-    // (instantly at 0 ms), like a classic hardware tuner.
     const float wanted = ((float)currentNote - inputMidi) * amount;
     if (!lastGrainVoiced)
         correction = 0.0f;
@@ -567,16 +551,13 @@ void Tune::process(float* const* ch, int numChannels, int n) noexcept
         }
         addMarks();
 
-        // Lay down every grain that starts by the sample about to be played.
+        // Lay down every grain that starts by the sample about to be played
         const int64_t outputPos = now - 1 - delay;
         for (int guard = 0; guard < 8; ++guard)
         {
             const int k2 = markFor(nextGrain);
             const Mark* m2 = k2 >= 0 ? &marks[(size_t)(k2 % kMarks)] : nullptr;
-            // Voiced grains are laid down a little early, so a phrase's first grain can
-            // still be lined up exactly on her first cycle.
-            // Breath grains are laid down 10 ms early too, so when a phrase starts there is
-            // always room to line its first grain up with her first cycle.
+            // Voiced grains are laid down a little early
             const double half = (m2 != nullptr && m2->voiced) ? 2.5 * m2->period : sr * 0.010;
             if (nextGrain - half > (double)outputPos + 1.0)
                 break;

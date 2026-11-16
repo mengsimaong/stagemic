@@ -1,7 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-// Chorus, Delay and Reverb: parallel "send" effects. Each receives a copy of
-// the voice and outputs only its effect signal; the chain mixes it back in.
-// The dry voice is never delayed (zero latency).
+// Chorus, Delay and Reverb
 #pragma once
 
 #include "core/dsp/Module.h"
@@ -11,7 +9,7 @@
 namespace stagemic::dsp
 {
 
-/** Circular buffer with fractional (linearly interpolated) reads. */
+// Circular buffer with fractional reads
 class DelayLine
 {
 public:
@@ -24,7 +22,7 @@ public:
         writePos = (writePos + 1) & mask;
     }
 
-    /** delay is in samples, >= 1 (1 = the sample pushed most recently). */
+    // delay is in samples, >= 1
     inline float read(float delay) const noexcept
     {
         const int whole = (int)delay;
@@ -40,24 +38,18 @@ private:
     int writePos = 0;
 };
 
-/** Lowers an effect while the singer is loud, so words stay clear and the
-    effect blooms in the gaps ("ducking"). */
+// Lowers an effect while the singer is loud
 class Ducker
 {
 public:
     void prepare(double sampleRate) noexcept;
     void reset() noexcept { envelope = 0.0f; }
-    /** amountDb: maximum reduction. Returns the gain for this sample. */
     float next(float voicePeak, float amountDb) noexcept;
 
 private:
     float envelope = 0.0f, attack = 0.0f, release = 0.0f;
 };
 
-/** Plate-style reverb: input diffusion (4 all-passes) feeding an 8-line
-    feedback delay network mixed by a Hadamard matrix, with gentle modulation
-    of each line (kills metallic ringing) and damping in the loop. Mono in,
-    stereo out. Allocation-free after prepare(). */
 class PlateReverb
 {
 public:
@@ -70,7 +62,7 @@ public:
     void setDamping(float amount01) noexcept; // 0 = bright, 1 = dark
     void setWidth(float width01) noexcept { width = width01; }
 
-    /** Processes one mono input sample; writes the stereo tail. */
+    // Processes one mono input sample
     inline void processSample(float in, float& outL, float& outR) noexcept;
 
 private:
@@ -91,9 +83,9 @@ private:
     double sr = 48000.0;
     AllPass diffusers[4];
     DelayLine lines[kLines];
-    float lengths[kLines]{};    // samples
-    float feedback[kLines]{};   // per-line gain for the chosen decay time
-    float lowpass[kLines]{};    // damping filter state
+    float lengths[kLines]{};  // samples
+    float feedback[kLines]{}; // per-line gain for the chosen decay time
+    float lowpass[kLines]{};  // damping filter state
     float dampCoef = 0.5f;
     float modCos[kLines]{}, modSin[kLines]{}, rotCos[kLines]{}, rotSin[kLines]{};
     float modDepth = 0.0f;
@@ -159,7 +151,7 @@ private:
     BlockSmoothed decaySeconds, dampAmount, widthAmount;
     DelayLine preDelayLines[kMaxChannels];
     BlockSmoothed preDelaySamples, lowCutSmooth, highCutSmooth, mixAmount, duckDb;
-    Biquad lowCut, highCut; // shape the reverb itself (not the voice)
+    Biquad lowCut, highCut; // shape the reverb itself
     Ducker ducker;
 };
 

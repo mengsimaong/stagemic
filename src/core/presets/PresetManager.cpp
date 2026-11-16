@@ -34,8 +34,7 @@ const std::vector<FactoryPreset> factoryPresets = {
         {pid::revOn, 0.0f},
     }},
 
-    // Whispering and soft close-mic sounds: no gate (it would cut soft whispers), no
-    // reverb, gentle levelling and compression, a light de-esser, firmer pop control.
+    // Whispering and soft close-mic sounds
     {"ASMR", {
         {pid::gateOn, 0.0f},
         {pid::eqLowCut, 50.0f}, {pid::eqLowCutSlope, 0.0f}, {pid::eqPlosive, 80.0f}, {pid::eqHighGain, 1.0f},
@@ -77,7 +76,7 @@ const std::vector<FactoryPreset> factoryPresets = {
         {pid::revOn, 0.0f},
     }},
 
-    // Tune styles. Chromatic works with any song; set the song's key for even cleaner notes.
+    // Tune styles
     {"Hard Tune", {
         {pid::eqTameRange, 4.0f}, {pid::tuneOn, 1.0f}, {pid::tuneSpeed, 0.0f},
         {pid::eqLowCut, 110.0f}, {pid::eqHighGain, 4.0f}, {pid::eqMidFreq, 3000.0f}, {pid::eqMidGain, 1.0f},
@@ -296,7 +295,7 @@ juce::File PresetManager::importPreset(const juce::File& source)
     if (name.isEmpty())
         name = source.getFileNameWithoutExtension();
 
-    // Never silently overwrite one of the user's presets: "Name (2)", "Name (3)", ...
+    // Never silently overwrite one of the user's presets
     auto target = fileForName(name);
     for (int n = 2; target.exists() && target != source; ++n)
         target = fileForName(name + " (" + juce::String(n) + ")");

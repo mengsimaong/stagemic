@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-// Small, allocation-free DSP building blocks shared by the StageMic modules.
+// Small, allocation-free DSP building blocks shared by the StageMic
 #pragma once
 
 #include <algorithm>
@@ -15,15 +15,15 @@ constexpr int kMaxChannels = 2;
 
 inline float dbToGain(float db) noexcept
 {
-    return std::exp(db * 0.11512925464970229f); // ln(10)/20
+    return std::exp(db * 0.11512925464970229f); // ln/20
 }
 
 inline float gainToDb(float gain) noexcept
 {
-    return 8.685889638065035f * std::log(std::max(gain, 1.0e-9f)); // 20/ln(10)
+    return 8.685889638065035f * std::log(std::max(gain, 1.0e-9f)); // 20/ln
 }
 
-/** One-pole smoothing coefficient for a time constant in milliseconds. */
+// One-pole smoothing coefficient for a time constant in milliseconds
 inline float timeToCoef(float ms, double sampleRate) noexcept
 {
     if (ms <= 0.0f)
@@ -37,8 +37,7 @@ inline float load(const std::atomic<float>* p) noexcept
 }
 
 //==============================================================================
-/** A parameter value that glides toward its target, stepped once per sub-block
-    (64 samples) so filter coefficients never jump audibly. */
+// A parameter value that glides toward its target
 struct BlockSmoothed
 {
     float current = 0.0f;
@@ -46,7 +45,7 @@ struct BlockSmoothed
 
     void snap(float v) noexcept { current = target = v; }
 
-    /** Returns true if the value changed this step. */
+    // Returns true if the value changed this step
     bool step(float newTarget, bool snapNow, float amount = 0.3f) noexcept
     {
         target = newTarget;
@@ -73,7 +72,7 @@ struct BiquadCoeffs
     float b0 = 1.0f, b1 = 0.0f, b2 = 0.0f, a1 = 0.0f, a2 = 0.0f;
 };
 
-/** Biquad designs from the RBJ "Audio EQ Cookbook". Allocation-free. */
+// Biquad designs from the RBJ "Audio EQ Cookbook"
 namespace biquad
 {
 inline double clampFreq(double f, double sampleRate) noexcept
@@ -101,7 +100,7 @@ inline BiquadCoeffs highpass(double sampleRate, double freq, double q) noexcept
     return normalise((1.0 + c) * 0.5, -(1.0 + c), (1.0 + c) * 0.5, 1.0 + alpha, -2.0 * c, 1.0 - alpha);
 }
 
-// Band-pass with 0 dB gain at its centre (RBJ "constant 0 dB peak gain").
+// Band-pass with 0 dB gain at its centre
 inline BiquadCoeffs bandPass(double sampleRate, double freq, double q) noexcept
 {
     const double w = 2.0 * kPi * clampFreq(freq, sampleRate) / sampleRate;
@@ -138,7 +137,7 @@ inline BiquadCoeffs highShelf(double sampleRate, double freq, double gainDb) noe
 }
 } // namespace biquad
 
-/** Transposed direct form II biquad with per-channel state. */
+// Transposed direct form II biquad with per-channel state
 struct Biquad
 {
     BiquadCoeffs c;
@@ -160,8 +159,7 @@ struct Biquad
     }
 };
 
-/** 4th-order Linkwitz-Riley low/high pass pair (two cascaded Butterworth biquads each).
-    Low + high sums back to a flat (all-pass) response, with zero latency. */
+// 4th-order Linkwitz-Riley low/high pass pair
 struct LinkwitzRiley
 {
     Biquad lp1, lp2, hp1, hp2;
@@ -189,7 +187,7 @@ struct LinkwitzRiley
 };
 
 //==============================================================================
-/** Static gain curve of a compressor with a soft knee. Returns gain change in dB (<= 0). */
+// Static gain curve of a compressor with a soft knee
 inline float compressorGainDb(float levelDb, float thresholdDb, float ratio, float kneeDb = 6.0f) noexcept
 {
     const float over = levelDb - thresholdDb;
@@ -204,7 +202,7 @@ inline float compressorGainDb(float levelDb, float thresholdDb, float ratio, flo
     return slope * x * x / (2.0f * kneeDb);
 }
 
-/** Smooths a gain-reduction value (dB) with separate attack and release. */
+// Smooths a gain-reduction value with separate attack and release
 struct GainSmoother
 {
     float state = 0.0f;

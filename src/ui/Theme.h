@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-// StageMic's look: dark, compact channel strip.
-// Colour roles: pink (accent) is the brand and the main action only. Each module
-// family has its own colour ("tint") for its switch, knob values and graphs, the
-// same one as its chip in the chain bar. Controls outside a module are neutral.
+// StageMic's look
 #pragma once
 
 #include "core/Parameters.h"
@@ -29,29 +26,36 @@ inline const juce::Colour reduction{0xffffa64d};
 inline const juce::Colour knobCap{0xff2c303b};
 inline const juce::Colour neutral{0xffc9ccd8}; // values of controls that belong to no module
 
-/** Module families and their colours. */
+// Module families and their colours
 inline juce::Colour family(ModuleId id)
 {
     switch (id)
     {
         case ModuleId::Gate:
         case ModuleId::Equalizer:
-        case ModuleId::Leveler: return juce::Colour(0xff6aa9ff);   // clean-up: blue
+        case ModuleId::Leveler:
+            return juce::Colour(0xff6aa9ff); // clean-up
         case ModuleId::Compressor:
-        case ModuleId::Multiband: return juce::Colour(0xffffb454); // dynamics: amber
+        case ModuleId::Multiband:
+            return juce::Colour(0xffffb454); // dynamics
         case ModuleId::Saturation:
-        case ModuleId::Exciter: return juce::Colour(0xffff8a6b);   // colour: coral
-        case ModuleId::DeEsser: return juce::Colour(0xffb48cff);   // de-ess: violet
+        case ModuleId::Exciter:
+            return juce::Colour(0xffff8a6b); // colour
+        case ModuleId::DeEsser:
+            return juce::Colour(0xffb48cff); // de-ess
         case ModuleId::Chorus:
         case ModuleId::Delay:
-        case ModuleId::Reverb: return juce::Colour(0xff3ddc97);    // space: green
-        case ModuleId::Limiter: return juce::Colour(0xffff5470);   // safety: red
-        case ModuleId::Tune: return juce::Colour(0xff4fd1e8);      // pitch: cyan
+        case ModuleId::Reverb:
+            return juce::Colour(0xff3ddc97); // space
+        case ModuleId::Limiter:
+            return juce::Colour(0xffff5470); // safety
+        case ModuleId::Tune:
+            return juce::Colour(0xff4fd1e8); // pitch
     }
     return neutral;
 }
 
-/** The family colour of the module switched by this on/off setting (neutral if none). */
+// The family colour of the module switched by this on/off setting
 inline juce::Colour familyOfEnableParam(const juce::String& enableParam)
 {
     for (const auto& d : moduleDescriptors())
@@ -60,13 +64,12 @@ inline juce::Colour familyOfEnableParam(const juce::String& enableParam)
     return neutral;
 }
 
-/** Gives a component (and everything inside it) a tint. */
 inline void setTint(juce::Component& c, juce::Colour colour)
 {
     c.getProperties().set("tint", (juce::int64)colour.getARGB());
 }
 
-/** The tint of the nearest component up the tree that has one. */
+// The tint of the nearest component up the tree that has one
 inline juce::Colour tintOf(const juce::Component& c)
 {
     for (auto* p = &c; p != nullptr; p = p->getParentComponent())
@@ -110,8 +113,7 @@ public:
 
     juce::Font getLabelFont(juce::Label& l) override { return l.getFont(); }
 
-    void drawRotarySlider(juce::Graphics& g, int x, int y, int w, int h, float pos, float start, float end,
-                          juce::Slider& slider) override
+    void drawRotarySlider(juce::Graphics& g, int x, int y, int w, int h, float pos, float start, float end, juce::Slider& slider) override
     {
         const auto bounds = juce::Rectangle<int>(x, y, w, h).toFloat().reduced(2.0f);
         const auto radius = juce::jmin(bounds.getWidth(), bounds.getHeight()) * 0.5f;
@@ -128,12 +130,12 @@ public:
         g.strokePath(track, juce::PathStrokeType(thickness, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
 
         juce::Path value;
-        value.addCentredArc(centre.x, centre.y, arcRadius, arcRadius, 0.0f, juce::jmin(zeroAngle, angle),
-                            juce::jmax(zeroAngle, angle), true);
+        value.addCentredArc(centre.x, centre.y, arcRadius, arcRadius, 0.0f, juce::jmin(zeroAngle, angle), juce::jmax(zeroAngle, angle),
+                            true);
         g.setColour(tintOf(slider).withAlpha(slider.isEnabled() ? 1.0f : 0.4f));
         g.strokePath(value, juce::PathStrokeType(thickness, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
 
-        // Flat cap: one fill, no gradient.
+        // Flat cap
         const auto capRadius = radius - thickness * 1.9f;
         g.setColour(knobCap);
         g.fillEllipse(juce::Rectangle<float>(capRadius * 2.0f, capRadius * 2.0f).withCentre(centre));
@@ -144,12 +146,12 @@ public:
         g.fillPath(pointer, juce::AffineTransform::rotation(angle).translated(centre));
     }
 
-    void drawLinearSlider(juce::Graphics& g, int x, int y, int w, int h, float sliderPos, float, float,
-                          juce::Slider::SliderStyle style, juce::Slider& slider) override
+    void drawLinearSlider(juce::Graphics& g, int x, int y, int w, int h, float sliderPos, float, float, juce::Slider::SliderStyle style,
+                          juce::Slider& slider) override
     {
         if (style == juce::Slider::LinearHorizontal)
         {
-            // Slim track; filled from the left, or from 0 for +/- controls; round thumb.
+            // Slim track
             const auto bounds = juce::Rectangle<int>(x, y, w, h).toFloat();
             const auto track = bounds.withSizeKeepingCentre(bounds.getWidth(), 4.0f);
             g.setColour(background);
@@ -159,7 +161,8 @@ public:
             const float from = bipolar ? (float)x + (float)w * (float)slider.valueToProportionOfLength(0.0) : (float)x;
             const auto tint = tintOf(slider);
             g.setColour(tint.withAlpha(slider.isEnabled() ? 0.85f : 0.35f));
-            g.fillRoundedRectangle(juce::Rectangle<float>(juce::jmin(from, sliderPos), track.getY(), std::abs(sliderPos - from), 4.0f), 2.0f);
+            g.fillRoundedRectangle(juce::Rectangle<float>(juce::jmin(from, sliderPos), track.getY(), std::abs(sliderPos - from), 4.0f),
+                                   2.0f);
 
             const auto thumb = juce::Rectangle<float>(11.0f, 11.0f).withCentre({sliderPos, track.getCentreY()});
             g.setColour(juce::Colour(0xffd9dae2));
@@ -197,8 +200,8 @@ public:
 
         // Fader cap
         const auto cap = juce::Rectangle<float>(26.0f, 14.0f).withCentre({cx, sliderPos});
-        g.setGradientFill(juce::ColourGradient(juce::Colour(0xffd9dae2), cap.getX(), cap.getY(), juce::Colour(0xff8f929e),
-                                               cap.getX(), cap.getBottom(), false));
+        g.setGradientFill(juce::ColourGradient(juce::Colour(0xffd9dae2), cap.getX(), cap.getY(), juce::Colour(0xff8f929e), cap.getX(),
+                                               cap.getBottom(), false));
         g.fillRoundedRectangle(cap, 3.0f);
         g.setColour(background.withAlpha(0.6f));
         g.drawRoundedRectangle(cap, 3.0f, 1.0f);
@@ -230,13 +233,12 @@ public:
     void drawButtonBackground(juce::Graphics& g, juce::Button& b, const juce::Colour&, bool over, bool down) override
     {
         auto r = b.getLocalBounds().toFloat().reduced(0.5f);
-        // Buttons marked "primary" (the main action) are filled with the accent colour;
-        // a lit toggle gets an accent outline.
+        // Buttons marked "primary" are filled with the accent colour
         const bool primary = (bool)b.getProperties().getWithDefault("primary", false);
         const auto base = primary ? accent : panelRaised;
         g.setColour(down ? base.brighter(0.15f) : (over ? base.brighter(0.07f) : base));
         g.fillRoundedRectangle(r, 5.0f);
-        // A lit toggle inside a module is outlined in the module's colour; elsewhere in pink.
+        // A lit toggle inside a module is outlined in the module's colour
         const auto lit = b.getProperties().contains("accentToggle") ? accent : tintOf(b);
         g.setColour(primary ? accent.brighter(0.2f) : (b.getToggleState() ? (lit == neutral ? accent : lit).withAlpha(0.85f) : outline));
         g.drawRoundedRectangle(r, 5.0f, 1.0f);

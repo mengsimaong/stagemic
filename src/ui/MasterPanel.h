@@ -6,7 +6,6 @@
 namespace stagemic
 {
 
-/** Right-hand column: big IN/OUT meters, Auto Level, input/output gain, status. */
 class MasterPanel final : public juce::Component
 {
 public:
@@ -15,9 +14,8 @@ public:
     void setLevels(float inPeak, float outPeak);
     void setLevelerGain(float db);
     void setStatus(const juce::String& text);
-    /** Called with true while "Hold: hear before" is held down, false when let go. */
     std::function<void(bool)> onHearBefore;
-    /** The plain-words level advice currently shown (for the tests). */
+    // The plain-words level advice currently shown
     const juce::String& getAdvice() const noexcept { return advice; }
     void paint(juce::Graphics&) override;
     void resized() override;
@@ -35,7 +33,7 @@ private:
     int peakHoldTicks = 0;
     juce::Rectangle<int> meterArea;
 
-    // Before / After, and plain-words level advice under the meters.
+    // Before / After, and plain-words level advice under the meters
     juce::TextButton beforeButton{"Hold: hear before"};
     bool beforeDown = false;
     static constexpr int kAdviceTicks = 80; // 4 s at 20 updates a second

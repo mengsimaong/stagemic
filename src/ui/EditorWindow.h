@@ -6,10 +6,7 @@
 namespace stagemic
 {
 
-/** Top-level desktop window that holds the StageMic editor.
-
-    Closing the window only hides it; the editor is kept so reopening is
-    instant. It is destroyed together with its FilterInstance. */
+// Top-level desktop window that holds the StageMic editor
 class EditorWindow final : public juce::DocumentWindow
 {
 public:

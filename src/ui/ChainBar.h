@@ -8,11 +8,7 @@
 namespace stagemic
 {
 
-/** The signal chain as a row of chips, in processing order:
-      Gate > EQ > Auto Level > ... > [Chorus | Delay | Reverb] > Limiter
-    Drag a chip to move that module. Lit chips are on, dim chips are off.
-    The Limiter stays last (it protects the stream from clipping).
-    "Recommended order" restores the default. */
+// The signal chain as a row of chips, in processing order
 class ChainBar final
     : public juce::Component
     , public juce::SettableTooltipClient
@@ -20,11 +16,11 @@ class ChainBar final
 public:
     explicit ChainBar(StageMicProcessor&);
 
-    /** Call regularly: repaints when the order, on/off states or activity change. */
+    // Call regularly
     void refresh();
     void setActivity(const dsp::VocalChain::Activity&);
 
-    /** Clicking a chip (without dragging) asks the window to show that module. */
+    // Clicking a chip asks the window to show that module
     std::function<void(ModuleId)> onModuleClicked;
 
     juce::String getTooltip() override;

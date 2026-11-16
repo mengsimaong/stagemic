@@ -16,3 +16,9 @@ juce_add_console_app(stagemic_bench PRODUCT_NAME "stagemic_bench")
 target_sources(stagemic_bench PRIVATE ${_shared} StressBench.cpp)
 stagemic_configure_juce_target(stagemic_bench)
 target_link_libraries(stagemic_bench PRIVATE juce::juce_audio_formats)
+
+# stagemic_devtools: editor screenshots, artwork, and live window measurements.
+juce_add_console_app(stagemic_devtools PRODUCT_NAME "stagemic_devtools")
+target_sources(stagemic_devtools PRIVATE ${_shared} DevTools.cpp)
+stagemic_configure_juce_target(stagemic_devtools)
+target_compile_definitions(stagemic_devtools PRIVATE JUCE_MODAL_LOOPS_PERMITTED=1)

@@ -1,14 +1,4 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-//
-// The OBS side of StageMic: a thin libobs audio filter that hands audio to a
-// FilterInstance and opens its editor window.
-//
-// Which thread calls what (OBS 30/31):
-//   create      - UI thread, or e.g. obs-websocket's thread
-//   destroy     - often OBS's "destruction" worker thread, NOT the UI thread
-//   filter_audio- OBS's audio thread (real-time: never block or allocate)
-//   save        - UI thread
-//   properties  - UI thread (button callbacks too)
 
 #include "obs/StageMicFilter.h"
 
@@ -24,7 +14,7 @@
 #include <memory>
 
 #ifndef STAGEMIC_VERSION
-  #define STAGEMIC_VERSION "dev"
+    #define STAGEMIC_VERSION "dev"
 #endif
 
 namespace stagemic
@@ -41,9 +31,9 @@ struct FilterData
 {
     obs_source_t* context = nullptr;
 
-    // Owned here, released on the JUCE message thread (see destroy).
+    // Owned here, released on the JUCE message thread
     std::shared_ptr<FilterInstance> instance;
-    // Raw pointer for the audio thread, so it never touches shared_ptr refcounts.
+    // Raw pointer for the audio thread
     FilterInstance* audioInstance = nullptr;
 
     int numChannels = 2;
@@ -96,7 +86,7 @@ void* create(obs_data_t* settings, obs_source_t* source)
     if (saved != nullptr && *saved != '\0' && !data->instance->setState(saved))
         blog(LOG_WARNING, "[StageMic] Saved settings could not be read; using defaults");
 
-    // Developer aid for automated testing: open the window without clicking.
+    // Used by the CI smoke test
     if (const char* env = std::getenv("STAGEMIC_OPEN_EDITOR_ON_LOAD"); env != nullptr && *env == '1')
         openEditor(data.get());
 
@@ -112,8 +102,7 @@ void destroy(void* ptr)
     if (data == nullptr)
         return;
 
-    // OBS often calls destroy from a worker thread, but windows may only be
-    // closed on the UI thread - so hand the instance over to the UI thread.
+    // OBS often calls destroy from a worker thread
     if (runtime::isRunning())
         runtime::post([instance = std::move(data->instance)]() mutable { instance.reset(); });
 
@@ -129,13 +118,13 @@ obs_audio_data* filterAudio(void* ptr, obs_audio_data* audio)
 
     data->audioInstance->process(reinterpret_cast<float* const*>(audio->data), data->numChannels, (int)audio->frames);
 
-    // Tell the (non-real-time) tick below that audio arrived; it does the logging.
+    // Tell the tick below that audio arrived
     data->firstAudioFrames.store(audio->frames, std::memory_order_relaxed);
 
     return audio;
 }
 
-// Runs once per video frame on OBS's graphics thread - never on the audio thread.
+// Runs once per video frame on OBS's graphics thread
 void videoTick(void* ptr, float)
 {
     auto* data = static_cast<FilterData*>(ptr);

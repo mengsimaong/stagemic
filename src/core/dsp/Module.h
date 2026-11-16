@@ -8,12 +8,7 @@
 namespace stagemic::dsp
 {
 
-/** One built-in effect in the vocal chain.
-
-    Real-time contract:
-      prepare()           - may allocate; called before audio starts.
-      reset/update/process- audio thread; must never allocate, lock or block.
-    Blocks passed to process() are at most VocalChain::kSubBlock samples. */
+// One built-in effect in the vocal chain
 class Module
 {
 public:
@@ -21,17 +16,15 @@ public:
 
     virtual void prepare(double sampleRate, int numChannels) = 0;
 
-    /** Clears internal state (filters, envelopes, delay lines). */
+    // Clears internal state
     virtual void reset() noexcept = 0;
 
-    /** Reads the current parameter values. snap = jump straight to them (no gliding). */
+    // Reads the current parameter values
     virtual void update(bool snap) noexcept = 0;
 
     virtual void process(float* const* channels, int numChannels, int numSamples) noexcept = 0;
 
-    /** Send effects (Chorus, Delay, Reverb) run in parallel with the dry voice:
-        process() receives a copy of the voice and must replace it with the effect
-        signal only ("100% wet"). The chain mixes the result back in. */
+    // Send effects run in parallel with the dry voice
     virtual bool isSend() const noexcept { return false; }
 
 protected:

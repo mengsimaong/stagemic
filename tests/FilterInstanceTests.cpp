@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 #include "AllocationGuard.h"
-#include "core/FilterInstance.h"
 #include "TestHelpers.h"
+#include "core/FilterInstance.h"
 
 #include <vector>
 
@@ -10,7 +10,7 @@ namespace stagemic::test
 
 namespace
 {
-/** Planar audio like OBS delivers: one float array per channel. */
+// Planar audio like OBS delivers
 struct PlanarAudio
 {
     PlanarAudio(int channels, int frames, juce::Random& rng)
@@ -69,9 +69,8 @@ public:
                     PlanarAudio audio(channels, frames, rng);
                     const auto original = audio.data;
                     instance.process(audio.pointers.data(), channels, frames);
-                    expect(audio.data == original,
-                           "changed audio at " + juce::String(sr) + " Hz, " + juce::String(channels) + " ch, "
-                               + juce::String(frames) + " frames");
+                    expect(audio.data == original, "changed audio at " + juce::String(sr) + " Hz, " + juce::String(channels) + " ch, " +
+                                                       juce::String(frames) + " frames");
                 }
             }
 

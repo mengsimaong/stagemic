@@ -22,7 +22,7 @@ inline float getParam(StageMicProcessor& p, const char* id)
     return p.getParameters().getRawParameterValue(id)->load();
 }
 
-/** Every module off, gains at 0 dB: StageMic should be perfectly transparent. */
+// Every module off, gains at 0 dB: StageMic should be perfectly
 inline void allModulesOff(StageMicProcessor& p)
 {
     for (const auto& d : moduleDescriptors())
@@ -32,7 +32,6 @@ inline void allModulesOff(StageMicProcessor& p)
     p.getChain().requestSnap();
 }
 
-/** Only one module on (snapped, no fade). */
 inline void onlyModule(StageMicProcessor& p, ModuleId id)
 {
     allModulesOff(p);
@@ -40,7 +39,7 @@ inline void onlyModule(StageMicProcessor& p, ModuleId id)
     p.getChain().requestSnap();
 }
 
-/** A processor prepared like OBS would: 48 kHz stereo (or mono), 1024-sample max blocks. */
+// A processor prepared like OBS would
 inline std::unique_ptr<StageMicProcessor> makeProcessor(double sampleRate = 48000.0, int channels = 2)
 {
     auto p = std::make_unique<StageMicProcessor>();
@@ -54,7 +53,7 @@ inline std::unique_ptr<StageMicProcessor> makeProcessor(double sampleRate = 4800
     return p;
 }
 
-/** Processes a whole signal in OBS-sized blocks (480 frames). */
+// Processes a whole signal in OBS-sized blocks
 inline void processSignal(StageMicProcessor& p, juce::AudioBuffer<float>& signal, int blockSize = 480)
 {
     juce::MidiBuffer midi;

@@ -11,46 +11,45 @@
 namespace stagemic
 {
 
-/** "Set up my voice": listens to the raw microphone (before Input Gain) for
-    a few seconds of room noise, then a few seconds of singing/talking, and
-    works out a good input gain, gate threshold and de-esser frequency.
-
-    The audio thread owns all measurement state. The window only sends
-    start/cancel requests and reads the measurements once the phase is Done.
-    No allocation, no locks. */
 class VoiceAnalyzer
 {
 public:
-    enum class Phase : int { Idle, Silence, Voice, Done };
+    enum class Phase : int
+    {
+        Idle,
+        Silence,
+        Voice,
+        Done
+    };
 
     static constexpr double silenceSeconds = 3.0;
     static constexpr double voiceSeconds = 8.0;
-    static constexpr int kBins = 121; // 1 dB histogram bins: -120 .. 0 dBFS
+    static constexpr int kBins = 121; // 1 dB histogram bins
     static constexpr int kCandidates = 6;
     static constexpr float candidateHz[kCandidates] = {4500.0f, 5500.0f, 6600.0f, 7800.0f, 9200.0f, 10800.0f};
 
-    /** What was measured (valid once getPhase() == Done). */
+    // What was measured (valid once getPhase == Done)
     struct Measurements
     {
         std::array<int, kBins> noise{}, voice{};
-        std::array<int, kBins> noisePeak{}; // room noise as the Gate hears it (its fast peak follower)
+        std::array<int, kBins> noisePeak{}; // room noise as the Gate hears it
         float peakDb = -120.0f;
         int sibilantWindows = 0;
         std::array<double, kCandidates> sibilance{};
     };
 
-    /** What we'd set, worked out from Measurements. */
+    // What we'd set, worked out from Measurements
     struct Result
     {
         bool heardVoice = false;
         float noiseDb = -120.0f, voiceDb = -120.0f, peakDb = -120.0f; // raw mic levels
-        float noisePeakDb = -120.0f; // the room noise's peaks, as the Gate sees them
+        float noisePeakDb = -120.0f;                                  // the room noise's peaks, as the Gate sees them
         float inputGainDb = 0.0f, gateThresholdDb = -55.0f, gateRatio = 2.0f;
         float sibilantHz = 0.0f; // 0 = not enough "s" sounds to tell
         bool clipped = false, noisy = false, veryQuiet = false;
     };
 
-    // ---- message thread -----------------------------------------------------
+    // ---- message thread
     void start() noexcept { command.store(1, std::memory_order_release); }
     void cancel() noexcept { command.store(2, std::memory_order_release); }
     Phase getPhase() const noexcept { return (Phase)phase.load(std::memory_order_acquire); }
@@ -72,25 +71,21 @@ public:
 
         r.voiceDb = percentile(m.voice, voiceFrom, 0.5f);
 
-        // Typical voice level to about -20 dBFS RMS, which is what the presets are
-        // tuned for, without pushing the loudest peaks past -3 dBFS.
+        // Typical voice level to about -20 dBFS RMS
         constexpr float targetDb = -20.0f;
         float gain = std::min(targetDb - r.voiceDb, -3.0f - r.peakDb);
         r.veryQuiet = gain > 24.0f;
         r.inputGainDb = std::round(std::clamp(gain, -24.0f, 24.0f) * 2.0f) * 0.5f;
 
-        // Gate between the room noise and the quiet end of the voice.
+        // Gate between the room noise and the quiet end of the voice
         const float noiseAfter = r.noiseDb + r.inputGainDb, voiceAfter = r.voiceDb + r.inputGainDb;
         float gate = noiseAfter + 0.35f * (voiceAfter - noiseAfter);
         gate = std::clamp(gate, noiseAfter + 6.0f, std::max(noiseAfter + 6.0f, voiceAfter - 15.0f));
-        // The Gate reacts to peaks, and noise (a laptop fan, hiss) peaks about 10 dB above
-        // its average: keep the threshold above those peaks, or the noise holds it open.
-        // But never so high that it cuts into the voice (a very noisy room is flagged instead).
+        // The Gate reacts to peaks, and noise peaks about 10 dB above its average
         r.noisePeakDb = percentile(m.noisePeak, 0, 0.9f);
         const float noisePeakAfter = r.noisePeakDb + r.inputGainDb;
         gate = std::max(gate, std::min(noisePeakAfter + 6.0f, voiceAfter - 6.0f));
-        // Clearly audible noise (a fan, hiss; quiet rooms sit around -65 dBFS or lower): a
-        // firmer gate, so it really goes quiet between phrases. Quiet rooms keep the gentle one.
+        // Clearly audible noise
         r.gateRatio = noiseAfter > -58.0f ? 4.0f : 2.0f;
         r.gateThresholdDb = std::round(std::clamp(gate, -80.0f, -10.0f));
 
@@ -108,7 +103,7 @@ public:
         return r;
     }
 
-    // ---- audio thread -------------------------------------------------------
+    // ---- audio thread
     void prepare(double sampleRate) noexcept
     {
         sr = sampleRate;
@@ -135,7 +130,7 @@ public:
             x *= norm;
 
             peakAbs = std::max(peakAbs, std::abs(x));
-            // Same peak follower as the Gate (0.3 ms attack, 30 ms release, loudest channel).
+            // Same peak follower as the Gate
             float across = 0.0f;
             for (int c = 0; c < numChannels; ++c)
                 across = std::max(across, std::abs(ch[c][i]));
@@ -211,7 +206,7 @@ private:
 
         if (p == Phase::Silence)
         {
-            // Skip the first quarter second: the click of pressing "Start".
+            // Skip the first quarter second
             if (totalWindows >= 5)
             {
                 ++m.noise[(size_t)binOf(db)];
@@ -228,7 +223,6 @@ private:
         else
         {
             ++m.voice[(size_t)binOf(db)];
-            // An "s": clearly voice, and more energy above 4 kHz than in the body of the voice.
             if (db > noiseFloor + 12.0f && highSum > 0.5 * bodySum && highSum > 1.0e-12)
             {
                 ++m.sibilantWindows;

@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-// Replaces global operator new/delete in the test executable so we can count
-// allocations made while an AllocationGuard is active on the current thread.
+// Counts allocations: replaces global operator new/delete in the tests
 #include "AllocationGuard.h"
 
 #include <cstdlib>
@@ -11,14 +10,15 @@ namespace
 thread_local bool tracking = false;
 thread_local std::size_t allocations = 0;
 
-// Set a debugger breakpoint here to see who allocated during a guarded section.
+// Set a debugger breakpoint here to see who allocated during a guarded
 #if defined(__GNUC__)
 __attribute__((noinline))
 #endif
 void onTrackedAllocation(std::size_t size)
 {
-    static volatile std::size_t lastSize;
+    static volatile std::size_t lastSize = 0;
     lastSize = size;
+    (void)lastSize;
 }
 
 void* allocate(std::size_t size)
@@ -39,20 +39,52 @@ void* allocate(std::size_t size)
 }
 } // namespace
 
-void* operator new(std::size_t size) { return allocate(size); }
-void* operator new[](std::size_t size) { return allocate(size); }
+void* operator new(std::size_t size)
+{
+    return allocate(size);
+}
+void* operator new[](std::size_t size)
+{
+    return allocate(size);
+}
 void* operator new(std::size_t size, const std::nothrow_t&) noexcept
 {
-    try { return allocate(size); } catch (...) { return nullptr; }
+    try
+    {
+        return allocate(size);
+    }
+    catch (...)
+    {
+        return nullptr;
+    }
 }
 void* operator new[](std::size_t size, const std::nothrow_t&) noexcept
 {
-    try { return allocate(size); } catch (...) { return nullptr; }
+    try
+    {
+        return allocate(size);
+    }
+    catch (...)
+    {
+        return nullptr;
+    }
 }
-void operator delete(void* p) noexcept { std::free(p); }
-void operator delete[](void* p) noexcept { std::free(p); }
-void operator delete(void* p, std::size_t) noexcept { std::free(p); }
-void operator delete[](void* p, std::size_t) noexcept { std::free(p); }
+void operator delete(void* p) noexcept
+{
+    std::free(p);
+}
+void operator delete[](void* p) noexcept
+{
+    std::free(p);
+}
+void operator delete(void* p, std::size_t) noexcept
+{
+    std::free(p);
+}
+void operator delete[](void* p, std::size_t) noexcept
+{
+    std::free(p);
+}
 
 namespace stagemic::test
 {

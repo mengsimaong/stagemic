@@ -48,9 +48,7 @@ float Ducker::next(float voicePeak, float amountDb) noexcept
     envelope = voicePeak + (voicePeak > envelope ? attack : release) * (envelope - voicePeak);
     if (amountDb <= 0.0f)
         return 1.0f;
-    // Full ducking while the voice is above -24 dBFS (singing), none below -38 dBFS
-    // (pauses, breaths). With the 120 ms release the effect blooms back within
-    // about a quarter to half a second after a phrase ends.
+    // Full ducking while the voice is above -24 dBFS
     const float amount = juce::jlimit(0.0f, 1.0f, (gainToDb(envelope) + 38.0f) / 14.0f);
     return dbToGain(-amountDb * amount);
 }
@@ -58,13 +56,13 @@ float Ducker::next(float voicePeak, float amountDb) noexcept
 //==============================================================================
 namespace
 {
-// Delay-line lengths in ms: mutually prime-ish so their echoes never line up.
+// Delay-line lengths in ms
 constexpr float plateLineMs[PlateReverb::kLines] = {23.1f, 27.7f, 31.9f, 35.3f, 39.7f, 43.9f, 48.3f, 53.9f};
 constexpr float diffuserMs[4] = {4.77f, 3.59f, 12.7f, 9.31f};
 constexpr float diffuserGain[4] = {0.75f, 0.75f, 0.625f, 0.625f};
 constexpr float lfoHz[PlateReverb::kLines] = {0.31f, 0.47f, 0.53f, 0.67f, 0.71f, 0.83f, 0.97f, 1.07f};
 
-// In-place 8-point fast Walsh-Hadamard transform, normalised (energy-preserving).
+// In-place 8-point fast Walsh-Hadamard transform, normalised
 inline void hadamard8(float* x) noexcept
 {
     for (int span = 1; span < 8; span <<= 1)
@@ -75,7 +73,7 @@ inline void hadamard8(float* x) noexcept
                 x[j] = a + b;
                 x[j + span] = a - b;
             }
-    constexpr float norm = 0.35355339059327373f; // 1/sqrt(8)
+    constexpr float norm = 0.35355339059327373f; // 1/sqrt
     for (int i = 0; i < 8; ++i)
         x[i] *= norm;
 }
@@ -131,7 +129,7 @@ void PlateReverb::setDecaySeconds(float rt60) noexcept
 
 void PlateReverb::setDamping(float amount) noexcept
 {
-    // Low-pass inside the loop: 12 kHz (bright) down to 2 kHz (dark).
+    // Low-pass inside the loop
     const double cutoff = 12000.0 * std::pow(2000.0 / 12000.0, (double)juce::jlimit(0.0f, 1.0f, amount));
     dampCoef = (float)(1.0 - std::exp(-2.0 * kPi * cutoff / sr));
 }
@@ -145,7 +143,7 @@ inline void PlateReverb::processSample(float in, float& outL, float& outR) noexc
     float out[kLines];
     for (int i = 0; i < kLines; ++i)
     {
-        // Slowly wobble each line's length (quadrature oscillator, no sin() per sample).
+        // Slowly wobble each line's length (quadrature oscillator
         const float c = modCos[i] * rotCos[i] - modSin[i] * rotSin[i];
         modSin[i] = modSin[i] * rotCos[i] + modCos[i] * rotSin[i];
         modCos[i] = c;
@@ -162,7 +160,7 @@ inline void PlateReverb::processSample(float in, float& outL, float& outR) noexc
     for (int i = 0; i < kLines; ++i)
         lines[i].push(fb[i] + ((i & 1) ? -x : x) * 0.5f);
 
-    // Two orthogonal sign patterns give a wide, decorrelated stereo tail.
+    // Two orthogonal sign patterns give a wide, decorrelated stereo tail
     const float l = out[0] + out[1] - out[2] - out[3] + out[4] - out[5] + out[6] - out[7];
     const float r = out[0] - out[1] + out[2] - out[3] - out[4] - out[5] + out[6] + out[7];
     const float mid = 0.5f * (l + r), side = 0.5f * (l - r) * width;
@@ -170,7 +168,7 @@ inline void PlateReverb::processSample(float in, float& outL, float& outR) noexc
     outL = (mid + side) * outGain;
     outR = (mid - side) * outGain;
 
-    // Keep the oscillators' amplitude at exactly 1 despite rounding.
+    // Keep the oscillators' amplitude at exactly 1 despite rounding
     if (++renormCounter >= 4096)
     {
         renormCounter = 0;
@@ -184,9 +182,6 @@ inline void PlateReverb::processSample(float in, float& outL, float& outR) noexc
 }
 
 //==============================================================================
-// Chorus: one modulated copy per channel (right channel's LFO a quarter cycle
-// ahead for width), 12 ms base delay, up to +/-6 ms sweep. Mixed in alongside
-// the dry voice, so the lead vocal stays focused.
 Chorus::Chorus(juce::AudioProcessorValueTreeState& s)
     : rate(param(s, pid::chRate))
     , depth(param(s, pid::chDepth))
@@ -240,9 +235,6 @@ void Chorus::process(float* const* ch, int numChannels, int n) noexcept
 }
 
 //==============================================================================
-// Delay: echoes with a darkening tone filter and a low cut in the loop, so
-// repeats stay clear. Time changes glide smoothly. The right channel is 5%
-// longer for width. Ducks under the voice.
 Delay::Delay(juce::AudioProcessorValueTreeState& s)
     : time(param(s, pid::dlyTime))
     , feedback(param(s, pid::dlyFeedback))
@@ -314,9 +306,6 @@ void Delay::process(float* const* ch, int numChannels, int n) noexcept
 }
 
 //==============================================================================
-// Reverb: pre-delay -> plate-style reverb -> low cut and high cut on the
-// reverb itself -> ducking. Mixed in alongside the untouched dry voice.
-// Size sets the decay time (0.3 s ... 4 s, exponential).
 Reverb::Reverb(juce::AudioProcessorValueTreeState& s)
     : size(param(s, pid::revSize))
     , damping(param(s, pid::revDamping))
@@ -352,7 +341,7 @@ void Reverb::reset() noexcept
 
 void Reverb::update(bool snap) noexcept
 {
-    // 1.12: compensates the slight shortening caused by damping in the loop (measured).
+    // 1.12 compensates the slight shortening caused by damping in the loop
     const float rt60 = 1.12f * 0.3f * std::pow(4.0f / 0.3f, load(size) * 0.01f);
     if (decaySeconds.step(rt60, snap) || snap)
         plate.setDecaySeconds(decaySeconds.current);
@@ -372,7 +361,7 @@ void Reverb::update(bool snap) noexcept
 
 void Reverb::process(float* const* ch, int numChannels, int n) noexcept
 {
-    // Ducking follows the dry voice, so measure it before turning it into reverb.
+    // Ducking follows the dry voice
     float duckGain[VocalChain::kSubBlock];
     for (int i = 0; i < n; ++i)
         duckGain[i] = ducker.next(peakAt(ch, numChannels, i), duckDb.current);

@@ -5,7 +5,7 @@
 #include <obs-module.h>
 
 #ifndef STAGEMIC_VERSION
-  #define STAGEMIC_VERSION "dev"
+    #define STAGEMIC_VERSION "dev"
 #endif
 
 OBS_DECLARE_MODULE()

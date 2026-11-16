@@ -2,13 +2,13 @@
 #include "obs/ObsWindowOwner.h"
 
 #ifdef _WIN32
-  #ifndef WIN32_LEAN_AND_MEAN
-    #define WIN32_LEAN_AND_MEAN
-  #endif
-  #ifndef NOMINMAX
-    #define NOMINMAX
-  #endif
-  #include <windows.h>
+    #ifndef WIN32_LEAN_AND_MEAN
+        #define WIN32_LEAN_AND_MEAN
+    #endif
+    #ifndef NOMINMAX
+        #define NOMINMAX
+    #endif
+    #include <windows.h>
 #endif
 
 namespace stagemic
@@ -20,7 +20,6 @@ void setNativeWindowOwner(void* window, void* owner)
     if (window == nullptr || owner == nullptr)
         return;
 
-    // For top-level windows GWLP_HWNDPARENT sets the *owner*, not a parent.
     SetWindowLongPtrW(static_cast<HWND>(window), GWLP_HWNDPARENT, reinterpret_cast<LONG_PTR>(owner));
 #else
     (void)window;

@@ -23,7 +23,7 @@ std::atomic<bool> running{false};
 std::mutex queueMutex;
 std::deque<std::function<void()>> queue;
 
-// Runs everything queued so far. Message thread only.
+// Runs everything queued so far
 void drainQueue()
 {
     for (;;)
@@ -57,7 +57,7 @@ void drainQueue()
 
 #if JUCE_LINUX || JUCE_BSD
 //------------------------------------------------------------------------------
-// Dedicated JUCE message thread.
+// Dedicated JUCE message thread
 std::thread messageThread;
 
 bool startPlatform()
@@ -72,7 +72,7 @@ bool startPlatform()
         mm->setCurrentThreadAsMessageThread();
         ready.set_value(true);
 
-        mm->runDispatchLoop(); // returns after stopDispatchLoop()
+        mm->runDispatchLoop(); // returns after stopDispatchLoop
 
         drainQueue();
         juceInit.reset();
@@ -85,7 +85,6 @@ void stopPlatform()
 {
     if (auto* mm = juce::MessageManager::getInstanceWithoutCreating())
     {
-        // Queue a final drain, then the quit message (FIFO, so the drain runs first).
         juce::MessageManager::callAsync([] { drainQueue(); });
         mm->stopDispatchLoop();
     }
@@ -96,7 +95,7 @@ void stopPlatform()
 
 #else
 //------------------------------------------------------------------------------
-// Windows (and later macOS): JUCE lives on OBS's UI thread.
+// Windows
 std::unique_ptr<juce::ScopedJuceInitialiser_GUI> juceInit;
 
 bool startPlatform()

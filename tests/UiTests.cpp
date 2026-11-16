@@ -1,11 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-// The window, driven like a user would: real mouse presses and drags on the
-// components inside the full editor (no screen needed).
+// The window, driven like a user would
 #include "TestHelpers.h"
+#include "core/presets/PresetManager.h"
 #include "ui/Displays.h"
 #include "ui/MasterPanel.h"
 #include "ui/StageMicEditor.h"
-#include "core/presets/PresetManager.h"
 
 #include <juce_dsp/juce_dsp.h>
 
@@ -30,12 +29,24 @@ T* findChild(juce::Component& root)
 juce::MouseEvent mouseAt(juce::Component& c, juce::Point<float> pos, juce::Point<float> downPos, bool dragged)
 {
     using Source = juce::MouseInputSource;
-    return {juce::Desktop::getInstance().getMainMouseSource(), pos, juce::ModifierKeys(juce::ModifierKeys::leftButtonModifier),
-            Source::defaultPressure, Source::defaultOrientation, Source::defaultRotation, Source::defaultTiltX, Source::defaultTiltY,
-            &c, &c, juce::Time::getCurrentTime(), downPos, juce::Time::getCurrentTime(), 1, dragged};
+    return {juce::Desktop::getInstance().getMainMouseSource(),
+            pos,
+            juce::ModifierKeys(juce::ModifierKeys::leftButtonModifier),
+            Source::defaultPressure,
+            Source::defaultOrientation,
+            Source::defaultRotation,
+            Source::defaultTiltX,
+            Source::defaultTiltY,
+            &c,
+            &c,
+            juce::Time::getCurrentTime(),
+            downPos,
+            juce::Time::getCurrentTime(),
+            1,
+            dragged};
 }
 
-/** Press at `from`, drag through `via` in small steps, release. */
+// Press at `from`, drag through `via` in small steps, release
 void drag(juce::Component& c, juce::Point<float> from, std::initializer_list<juce::Point<float>> via)
 {
     c.mouseMove(mouseAt(c, from, from, false));
@@ -63,10 +74,11 @@ public:
 
     void runTest() override
     {
-        const char* eqParams[] = {pid::eqLowCut,    pid::eqLowFreq,   pid::eqLowGain,  pid::eqMidFreq,   pid::eqMidGain,   pid::eqMidQ,
-                                  pid::eqLoMidFreq, pid::eqLoMidGain, pid::eqLoMidQ,   pid::eqHiMidFreq, pid::eqHiMidGain, pid::eqHiMidQ,
-                                  pid::eqHighFreq,  pid::eqHighGain,  pid::eqTameFreq, pid::eqTameRange, pid::eqTameThreshold, pid::eqPlosive};
-        // Which settings each EQ point may change (index = point number - 1).
+        const char* eqParams[] = {pid::eqLowCut,    pid::eqLowFreq,       pid::eqLowGain,   pid::eqMidFreq,  pid::eqMidGain,
+                                  pid::eqMidQ,      pid::eqLoMidFreq,     pid::eqLoMidGain, pid::eqLoMidQ,   pid::eqHiMidFreq,
+                                  pid::eqHiMidGain, pid::eqHiMidQ,        pid::eqHighFreq,  pid::eqHighGain, pid::eqTameFreq,
+                                  pid::eqTameRange, pid::eqTameThreshold, pid::eqPlosive};
+        // Which settings each EQ point may change
         const std::vector<std::vector<const char*>> owns = {{pid::eqLowCut},
                                                             {pid::eqLowFreq, pid::eqLowGain},
                                                             {pid::eqLoMidFreq, pid::eqLoMidGain},
@@ -90,17 +102,17 @@ public:
                 juce::AudioBuffer<float> view(voice.getArrayOfWritePointers(), 2, start, 480);
                 p->processBlock(view, midi);
             }
-            // Held (after the 15 ms fade): exactly the mic.
+            // Held
             float worst = 0.0f;
             for (int i = 48000 + 2400; i < 96000; ++i)
                 worst = std::max(worst, std::abs(voice.getSample(0, i) - dry.getSample(0, i)));
             expectLessThan(worst, 1.0e-6f, "while held: the untouched mic");
-            // Let go: StageMic is back (Karaoke Star is clearly louder and different).
+            // Let go
             float diff = 0.0f;
             for (int i = 96000 + 4800; i < 144000; ++i)
                 diff = std::max(diff, std::abs(voice.getSample(0, i) - dry.getSample(0, i)));
             expectGreaterThan(diff, 0.01f, "after letting go: processed again");
-            // No jumps at the switches bigger than the tone's own sample-to-sample steps.
+            // No jumps at the switches bigger than the tone's own sample-to-sample
             float maxStep = 0.0f;
             for (int i = 1; i < voice.getNumSamples(); ++i)
                 maxStep = std::max(maxStep, std::abs(voice.getSample(0, i) - voice.getSample(0, i - 1)));
@@ -122,7 +134,8 @@ public:
             expectEquals(feed(0.02f, 0.03f, 100), juce::String("Too quiet: try Set up my voice"));
             expectEquals(feed(0.3f, 0.5f, 100), juce::String("Level is good"));
             expectEquals(feed(1.0f, 0.5f, 1), juce::String("Mic is clipping: turn its gain down"));
-            expectEquals(feed(0.3f, 0.5f, 30), juce::String("Mic is clipping: turn its gain down"), "an alarm stays up long enough to read");
+            expectEquals(feed(0.3f, 0.5f, 30), juce::String("Mic is clipping: turn its gain down"),
+                         "an alarm stays up long enough to read");
             expectEquals(feed(0.3f, 0.5f, 60), juce::String("Level is good"), "then clears");
             expectEquals(feed(0.3f, 0.98f, 1), juce::String("Too loud: turn Output down"));
         }
@@ -146,18 +159,19 @@ public:
                 for (auto* id : eqParams)
                     before[id] = getParam(*p, id);
 
-                // Grab the point, wander over the whole graph (across every other point), let go.
+                // Grab the point, wander over the whole graph, let go
                 const auto start = eq->getNodePosition(node);
-                // A preset may put two points on one spot (Robot: 1 and 2 at 150 Hz); there the
-                // one on top is grabbed, which the next test covers.
+                // A preset may put two points on one spot
                 bool buried = false;
                 for (int other = 0; other < EqDisplay::numNodes; ++other)
                     buried = buried || (other != node && eq->getNodePosition(other).getDistanceFrom(start) < 14.0f);
                 if (buried)
                     continue;
                 const auto w = (float)eq->getWidth(), h = (float)eq->getHeight();
-                // (Each point is left somewhere of its own, so the next grab isn't on a stack.)
-                drag(*eq, start, {{w * 0.05f, h * 0.2f}, {w * 0.95f, h * 0.8f}, {w * (0.10f + 0.125f * (float)node), h * (0.22f + 0.04f * (float)node)}});
+                drag(*eq, start,
+                     {{w * 0.05f, h * 0.2f},
+                      {w * 0.95f, h * 0.8f},
+                      {w * (0.10f + 0.125f * (float)node), h * (0.22f + 0.04f * (float)node)}});
 
                 bool ownChanged = false;
                 for (auto* id : eqParams)
@@ -179,26 +193,26 @@ public:
             p->setAdvancedMode(true);
             p->setVoiceSetupOffered();
             setParam(*p, pid::eqLowCut, 120.0f);
-            setParam(*p, pid::eqLowFreq, 120.0f); // point 2 exactly on point 1 (its gain is 0 dB, same line)
+            setParam(*p, pid::eqLowFreq, 120.0f); // point 2 exactly on point 1
             setParam(*p, pid::eqLowGain, 0.0f);
             std::unique_ptr<juce::AudioProcessorEditor> editor(p->createEditorAndMakeActive());
             auto* eq = findChild<EqDisplay>(*editor);
             expectWithinAbsoluteError(eq->getNodePosition(0).getDistanceFrom(eq->getNodePosition(1)), 0.0f, 0.5f);
 
-            // Never touched: point 2 is drawn over point 1, so a drag there must move point 2.
+            // Never touched
             auto spot = eq->getNodePosition(1);
             drag(*eq, spot, {spot.translated(60.0f, -30.0f)});
             expectWithinAbsoluteError(getParam(*p, pid::eqLowCut), 120.0f, 0.01f, "point 1 stays");
             expectGreaterThan(getParam(*p, pid::eqLowFreq), 150.0f, "point 2 moves");
 
-            // Put point 2 back on point 1 by dragging it there, then grab again: still point 2 (the one last used is on top).
+            // Put point 2 back on point 1 by dragging it there, then grab again
             drag(*eq, eq->getNodePosition(1), {eq->getNodePosition(0)});
             spot = eq->getNodePosition(0);
             drag(*eq, spot, {spot.translated(80.0f, 20.0f)});
             expectWithinAbsoluteError(getParam(*p, pid::eqLowCut), 120.0f, 0.01f, "point 1 still stays");
             expectGreaterThan(getParam(*p, pid::eqLowFreq), 150.0f, "point 2 moves again");
 
-            // And point 1 can still be reached once point 2 is out of the way.
+            // And point 1 can still be reached once point 2 is out of the way
             spot = eq->getNodePosition(0);
             drag(*eq, spot, {spot.translated(-40.0f, 0.0f)});
             expectLessThan(getParam(*p, pid::eqLowCut), 110.0f, "point 1 moves when grabbed on its own");
@@ -240,7 +254,7 @@ public:
             logMessage("switches flicked while singing: noise above 5 kHz " + juce::String(noise, 1) + " dB");
             expectLessThan(noise, -60.0, "no clicks");
 
-            // Every point off: the EQ leaves the sound exactly as it is.
+            // Every point off
             auto q = makeProcessor();
             onlyModule(*q, ModuleId::Equalizer);
             setParam(*q, pid::eqPlosive, 0.0f);
@@ -271,7 +285,8 @@ public:
                 juce::Random rng(3);
                 for (int i = 0; i < voice.getNumSamples(); ++i)
                 {
-                    const float v = 0.1f * (float)std::sin(2.0 * juce::MathConstants<double>::pi * 220.0 * i / 48000.0) + 0.02f * (rng.nextFloat() - 0.5f);
+                    const float v = 0.1f * (float)std::sin(2.0 * juce::MathConstants<double>::pi * 220.0 * i / 48000.0) +
+                                    0.02f * (rng.nextFloat() - 0.5f);
                     voice.setSample(0, i, v);
                     voice.setSample(1, i, v);
                 }
@@ -283,14 +298,13 @@ public:
             for (int i = 0; i < plain.getNumSamples(); ++i)
                 identical = identical && plain.getSample(0, i) == moved.getSample(0, i);
             expect(identical, "at 0 dB, where the bell sits makes no difference: bit-identical");
-            expectLessThan(used.getRMSLevel(0, 24000, 24000), plain.getRMSLevel(0, 24000, 24000) * 0.8f, "a -9 dB bell on the note turns it down");
+            expectLessThan(used.getRMSLevel(0, 24000, 24000), plain.getRMSLevel(0, 24000, 24000) * 0.8f,
+                           "a -9 dB bell on the note turns it down");
         }
 
         beginTest("EQ: dragging points and knobs quickly while singing doesn't click or crackle");
         {
-            // A pure low note has nothing above 5 kHz, so anything measured up there is
-            // noise made by the EQ changing. Every setting sweeps its whole range, back and
-            // forth, a few times a second (a fast mouse drag), each at its own pace.
+            // A pure low note has nothing above 5 kHz
             auto run = [&](bool moving, int slope, int onlyParam = -1, float* peakOut = nullptr) {
                 auto p = makeProcessor();
                 onlyModule(*p, ModuleId::Equalizer);
@@ -298,8 +312,9 @@ public:
                 setParam(*p, pid::eqTameRange, 0.0f);
                 setParam(*p, pid::eqLowCutSlope, (float)slope);
                 p->getChain().requestSnap();
-                const char* ids[] = {pid::eqLowCut, pid::eqLowFreq, pid::eqLowGain, pid::eqMidFreq, pid::eqMidGain, pid::eqMidQ, pid::eqHighFreq, pid::eqHighGain,
-                                     pid::eqLoMidFreq, pid::eqLoMidGain, pid::eqLoMidQ, pid::eqHiMidFreq, pid::eqHiMidGain, pid::eqHiMidQ};
+                const char* ids[] = {pid::eqLowCut, pid::eqLowFreq,   pid::eqLowGain,   pid::eqMidFreq,   pid::eqMidGain,
+                                     pid::eqMidQ,   pid::eqHighFreq,  pid::eqHighGain,  pid::eqLoMidFreq, pid::eqLoMidGain,
+                                     pid::eqLoMidQ, pid::eqHiMidFreq, pid::eqHiMidGain, pid::eqHiMidQ};
                 auto tone = sine(150.0, 0.2f, 48000 * 4);
                 juce::MidiBuffer midi;
                 for (int start = 0, block = 0; start < tone.getNumSamples(); start += 480, ++block)
@@ -310,7 +325,8 @@ public:
                             if (onlyParam >= 0 && k != onlyParam)
                                 continue;
                             const double phase = block * 0.01 * (1.5 + 0.37 * k); // 1.5 .. 4 sweeps a second
-                            p->getParameters().getParameter(ids[k])->setValueNotifyingHost((float)(0.5 + 0.5 * std::sin(2.0 * juce::MathConstants<double>::pi * phase)));
+                            p->getParameters().getParameter(ids[k])->setValueNotifyingHost(
+                                (float)(0.5 + 0.5 * std::sin(2.0 * juce::MathConstants<double>::pi * phase)));
                         }
                     juce::AudioBuffer<float> view(tone.getArrayOfWritePointers(), 2, start, 480);
                     p->processBlock(view, midi);
@@ -332,22 +348,25 @@ public:
                 if (peakOut != nullptr)
                     *peakOut = peak;
                 else
-                    expect(std::isfinite(peak) && peak <= 1.0f, "stays stable (stacked boosts may reach the output ceiling, never past it)");
+                    expect(std::isfinite(peak) && peak <= 1.0f,
+                           "stays stable (stacked boosts may reach the output ceiling, never past it)");
                 return 10.0 * std::log10(high / all + 1.0e-20);
             };
             for (int k = 0; k < 14; ++k)
             {
-                const char* names[] = {"low cut", "low shelf freq", "low shelf gain", "mid freq", "mid gain", "mid Q", "air freq", "air gain",
-                                       "low mid freq", "low mid gain", "low mid Q", "high mid freq", "high mid gain", "high mid Q"};
+                const char* names[] = {"low cut",   "low shelf freq", "low shelf gain", "mid freq",     "mid gain",
+                                       "mid Q",     "air freq",       "air gain",       "low mid freq", "low mid gain",
+                                       "low mid Q", "high mid freq",  "high mid gain",  "high mid Q"};
                 float peak = 0.0f;
                 const double noise = run(true, 1, k, &peak);
-                logMessage(juce::String("sweeping only ") + names[k] + ": noise " + juce::String(noise, 1) + " dB, peak " + juce::String(juce::Decibels::gainToDecibels(peak), 1) + " dBFS");
+                logMessage(juce::String("sweeping only ") + names[k] + ": noise " + juce::String(noise, 1) + " dB, peak " +
+                           juce::String(juce::Decibels::gainToDecibels(peak), 1) + " dBFS");
             }
             for (int slope : {0, 1})
             {
                 const double still = run(false, slope), moving = run(true, slope);
-                logMessage(juce::String(slope ? 24 : 12) + " dB/oct: noise above 5 kHz, relative to the voice: " + juce::String(still, 1)
-                           + " dB still, " + juce::String(moving, 1) + " dB while every setting is swept");
+                logMessage(juce::String(slope ? 24 : 12) + " dB/oct: noise above 5 kHz, relative to the voice: " + juce::String(still, 1) +
+                           " dB still, " + juce::String(moving, 1) + " dB while every setting is swept");
                 expectLessThan(moving, -60.0, "no audible clicks while sweeping");
             }
         }
@@ -362,7 +381,7 @@ public:
             {
                 auto p = makeProcessor();
                 onlyModule(*p, ModuleId::Equalizer);
-                if (round > 0) // round 0: the default EQ; then random settings
+                if (round > 0) // round 0
                 {
                     for (auto* id : {pid::eqLowCut, pid::eqLowFreq, pid::eqLowGain, pid::eqMidFreq, pid::eqMidGain, pid::eqMidQ,
                                      pid::eqLoMidFreq, pid::eqLoMidGain, pid::eqLoMidQ, pid::eqHiMidFreq, pid::eqHiMidGain, pid::eqHiMidQ,
@@ -371,13 +390,13 @@ public:
                     for (int point = 0; point < 6; ++point) // about one in three points switched off
                         setParam(*p, pid::eqPointOn[point], rng.nextFloat() < 0.33f ? 0.0f : 1.0f);
                 }
-                setParam(*p, pid::eqPlosive, 0.0f);   // these two react to the voice,
+                setParam(*p, pid::eqPlosive, 0.0f);   // these two react to the voice
                 setParam(*p, pid::eqTameRange, 0.0f); // they aren't part of the fixed curve
                 p->setAdvancedMode(true);
                 p->setVoiceSetupOffered();
                 p->getChain().requestSnap();
 
-                // A quiet click, so even +30 dB of boost stays far below the output safety limiter.
+                // A quiet click, so even +30 dB of boost stays far below the output
                 constexpr float level = 0.01f;
                 juce::AudioBuffer<float> impulse(2, size);
                 impulse.clear();
@@ -398,7 +417,7 @@ public:
                     const float real = juce::Decibels::gainToDecibels(data[(size_t)bin] / level, -200.0f);
                     const float drawn = eq->getDrawnResponseDb(bin * 48000.0f / size);
                     if (real < -24.0f && drawn < -24.0f)
-                        continue; // both off the bottom of the graph (it ends at -18 dB)
+                        continue; // both off the bottom of the graph
                     if (std::abs(real - drawn) > worst)
                     {
                         worst = std::abs(real - drawn);
@@ -406,9 +425,10 @@ public:
                     }
                 }
                 worstOverall = std::max(worstOverall, worst);
-                expectLessThan(worst, 0.75, "round " + juce::String(round) + ": drawn curve is off by " + juce::String(worst, 1) + " dB at "
-                                               + juce::String(worstFreq, 0) + " Hz (slope "
-                                               + juce::String(getParam(*p, pid::eqLowCutSlope) >= 0.5f ? 24 : 12) + " dB/oct)");
+                expectLessThan(worst, 0.75,
+                               "round " + juce::String(round) + ": drawn curve is off by " + juce::String(worst, 1) + " dB at " +
+                                   juce::String(worstFreq, 0) + " Hz (slope " +
+                                   juce::String(getParam(*p, pid::eqLowCutSlope) >= 0.5f ? 24 : 12) + " dB/oct)");
             }
             logMessage("largest difference between the drawn and the real curve: " + juce::String(worstOverall, 2) + " dB");
         }

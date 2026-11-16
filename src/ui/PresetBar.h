@@ -8,8 +8,6 @@
 namespace stagemic
 {
 
-/** Header: logo, preset browser (< name >), Save, and a menu for
-    Save As / Import / Export / Delete / open the preset folder. */
 class PresetBar final : public juce::Component
 {
 public:
@@ -19,10 +17,10 @@ public:
     void paint(juce::Graphics&) override;
     void resized() override;
 
-    /** Called after any preset is loaded (the module order may have changed). */
+    // Called after any preset is loaded
     std::function<void()> onPresetLoaded;
     std::function<void()> onSetUpVoice;
-    /** Simple / Advanced switch. */
+    // Simple / Advanced switch
     std::function<void(bool advanced)> onModeChanged;
     void setMode(bool advanced);
 
@@ -58,7 +56,10 @@ private:
     class StatusTimer : public juce::Timer
     {
     public:
-        explicit StatusTimer(PresetBar& b) : bar(b) {}
+        explicit StatusTimer(PresetBar& b)
+            : bar(b)
+        {
+        }
         void timerCallback() override;
         PresetBar& bar;
     } statusTimer{*this};

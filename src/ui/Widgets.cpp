@@ -100,7 +100,7 @@ ValueKnob::ValueKnob(APVTS& state, const juce::String& id, const juce::String& n
     valueText.setTooltip("Click to type an exact value (e.g. 2.5k, -3, +4.5 dB)");
     valueText.onTextChange = [this] {
         slider.setValue(slider.getValueFromText(valueText.getText()), juce::sendNotificationSync);
-        refreshText(); // show it in its proper format (clamped to the allowed range)
+        refreshText(); // show it in its proper format
     };
     addAndMakeVisible(valueText);
 
@@ -122,7 +122,7 @@ void ValueKnob::refreshText()
 
 void ValueKnob::resized()
 {
-    // Same order everywhere: name, knob, value.
+    // Same order everywhere
     auto area = getLocalBounds();
     label.setBounds(area.removeFromTop(15));
     valueText.setBounds(area.removeFromBottom(17));
@@ -140,8 +140,8 @@ ChoiceToggle::ChoiceToggle(APVTS& state, const juce::String& id, const juce::Str
     addAndMakeVisible(label);
 
     const bool longList = parameter->choices.size() > 3;
-    button.setTooltip(parameter->getName(64) + ": "
-                      + (longList ? juce::String("click to choose") : parameter->choices.joinIntoString(" / ") + " (click to switch)"));
+    button.setTooltip(parameter->getName(64) + ": " +
+                      (longList ? juce::String("click to choose") : parameter->choices.joinIntoString(" / ") + " (click to switch)"));
     button.onClick = [this, longList] {
         if (!longList)
         {
@@ -149,7 +149,7 @@ ChoiceToggle::ChoiceToggle(APVTS& state, const juce::String& id, const juce::Str
             attachment.setValueAsCompleteGesture((float)next);
             return;
         }
-        // Many choices (key, scale): a menu instead of cycling through them all.
+        // Many choices
         juce::PopupMenu menu;
         for (int i = 0; i < parameter->choices.size(); ++i)
             menu.addItem(i + 1, parameter->choices[i], true, i == parameter->getIndex());
@@ -212,12 +212,11 @@ void MeterBar::setLevel(float peak)
     }
     else if (--holdTicks <= 0)
         hold = juce::jmax(level, hold * 0.92f);
-    // Only redraw when the bar visibly moves (about 0.25 dB), not every frame in silence.
+    // Only redraw when the bar visibly moves, not every frame in silence
     auto toDb = [](float v) { return juce::Decibels::gainToDecibels(v, -60.0f); };
     if (std::abs(toDb(level) - toDb(paintedLevel)) > 0.25f || std::abs(toDb(hold) - toDb(paintedHold)) > 0.25f)
     {
-        // Redraw only the slice between the old and the new level, and the two
-        // places of the peak line: a few pixels instead of the whole bar.
+        // Redraw only the slice between the old and the new level
         const auto area = barArea();
         auto slice = [&](float a, float b) {
             const float top = juce::jmin(a, b) - 3.0f, bottom = juce::jmax(a, b) + 3.0f;
@@ -276,7 +275,8 @@ void MeterBar::paint(juce::Graphics& g)
     const float top = toY(level);
     if (top < bar.getBottom())
     {
-        juce::ColourGradient grad(theme::meterRed, 0.0f, toY(1.0f), theme::meterGreen, 0.0f, toY(juce::Decibels::decibelsToGain(-18.0f)), false);
+        juce::ColourGradient grad(theme::meterRed, 0.0f, toY(1.0f), theme::meterGreen, 0.0f, toY(juce::Decibels::decibelsToGain(-18.0f)),
+                                  false);
         grad.addColour(0.15, theme::meterYellow);
         g.setGradientFill(grad);
         g.fillRect(bar.withTop(top));
@@ -355,8 +355,8 @@ void Section::paint(juce::Graphics& g)
 
     g.setColour(on ? theme::text : theme::dimText);
     g.setFont(theme::font(12.0f, true));
-    const auto titleArea = top ? header.withTrimmedLeft(30.0f).withTrimmedRight(8.0f)
-                               : header.withTrimmedLeft(30.0f).withTrimmedRight(4.0f);
+    const auto titleArea =
+        top ? header.withTrimmedLeft(30.0f).withTrimmedRight(8.0f) : header.withTrimmedLeft(30.0f).withTrimmedRight(4.0f);
     g.drawFittedText(title.toUpperCase(), titleArea.toNearestInt(), juce::Justification::centredLeft, 1, 0.75f);
 }
 

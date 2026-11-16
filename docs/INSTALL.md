@@ -4,9 +4,9 @@ You need **Windows 10 or 11 (64-bit)** and **OBS Studio 31 or newer** (in OBS: *
 
 ## 1. Install
 
-1. Download **StageMic-Setup.exe** from the Paopoa StageMic download page.
+1. Download the installer (**StageMic-Setup-(version).exe**) from the Paopoa StageMic download page.
 2. **Close OBS Studio completely**, also from the system tray (the small icons near the clock: right-click the OBS icon → **Exit**).
-3. Double-click **StageMic-Setup.exe**.
+3. Double-click the installer.
    * If Windows says **"Windows protected your PC"**, click **More info → Run anyway**.
      This appears because Paopoa StageMic is new and not code-signed yet.
    * Click **Yes** when Windows asks to allow changes (the installer writes into OBS's plugin folder).
@@ -31,7 +31,7 @@ direct monitoring plays your voice without the tuning; to hear the effect, set t
 
 ## 3. Update or uninstall
 
-* **Update:** run the newest StageMic-Setup.exe. It installs over the old version; your filter, settings and presets stay.
+* **Update:** run the newest installer. It installs over the old version; your filter, settings and presets stay.
 * **Uninstall:** Windows **Settings → Apps → Installed apps → Paopoa StageMic for OBS Studio → Uninstall**.
   Your own presets in `Documents\StageMic\Presets` are kept unless you delete them.
 
@@ -45,7 +45,7 @@ Go through these in order. Most people are fixed by step 1 or 2.
    **microphone** (Audio Mixer → three dots → Filters) and click **+** under **Audio Filters**.
    It isn't in the list of a camera, image or scene (those only show video "Effect Filters").
 3. **Check your OBS version:** **Help → About** must say **31** or newer. Update OBS from obsproject.com if it's older.
-4. **Pick the right kind of OBS in the installer.** Run StageMic-Setup.exe again:
+4. **Pick the right kind of OBS in the installer.** Run the installer again:
    * Steam, obsproject.com installer or Microsoft Store → **"I installed OBS Studio normally"**.
    * You unzipped OBS yourself, or there's a file called `portable_mode.txt` next to OBS's `bin` folder →
      **"I use a zip (portable) copy"**, and choose that OBS folder.

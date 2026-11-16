@@ -7,11 +7,6 @@
 namespace stagemic
 {
 
-/** Lock-free peak holder.
-
-    The audio thread calls pushPeak() once per block; the UI thread calls
-    takePeak() on its own timer. No locks, no allocation, safe from any thread.
-*/
 class LevelMeter
 {
 public:
@@ -23,7 +18,7 @@ public:
         }
     }
 
-    /** Returns the highest peak since the last call and resets it. */
+    // Returns the highest peak since the last call and resets it
     float takePeak() noexcept { return held.exchange(0.0f, std::memory_order_relaxed); }
 
 private:

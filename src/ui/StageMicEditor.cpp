@@ -2,7 +2,7 @@
 #include "ui/StageMicEditor.h"
 
 #ifndef STAGEMIC_VERSION
-  #define STAGEMIC_VERSION "dev"
+    #define STAGEMIC_VERSION "dev"
 #endif
 
 namespace stagemic
@@ -11,40 +11,53 @@ namespace stagemic
 StageMicEditor::StageMicEditor(StageMicProcessor& p)
     : juce::AudioProcessorEditor(p)
     , processor(p)
+    , voiceSetup(p)
     , presetBar(p)
     , chainBar(p)
-    , display(p.getParameters(), p.getSpectrumTap(), [&p] { return p.getPreparedSampleRate(); }, p.getChain().getTune())
+    , display(
+          p.getParameters(), p.getSpectrumTap(), [&p] { return p.getPreparedSampleRate(); }, p.getChain().getTune())
     , gate(p.getParameters())
     , deEsser(p.getParameters(), p.getChain())
     , compressor(p.getParameters())
     , color(p.getParameters(),
-            {{ModuleId::Saturation, "Warmth",
+            {{ModuleId::Saturation,
+              "Warmth",
               {{pid::satModel, "Model", nullptr},
                {pid::satDrive, "Drive", nullptr},
                {pid::satMix, "Mix", nullptr},
                {pid::satCharacter, "Character", "Character: low = edgier, high = warmer"}}},
-             {ModuleId::Exciter, "Air",
+             {ModuleId::Exciter,
+              "Air",
               {{pid::exFreq, "Freq", "Exciter: adds new harmonics above this frequency"},
                {pid::exAmount, "Amount", "How strongly the harmonics are generated"},
                {pid::exMix, "Mix", "How much of the new harmonics is added on top"}}}},
             "COLOR  (Warmth = saturation, Air = exciter)", 0, 2)
     , space(p.getParameters(),
             {{ModuleId::Chorus, "Chorus", {{pid::chRate, "Rate"}, {pid::chDepth, "Depth"}, {pid::chMix, "Level"}}},
-             {ModuleId::Delay, "Delay",
-              {{pid::dlyTime, "Time"}, {pid::dlyFeedback, "Feedback"}, {pid::dlyTone, "Tone"}, {pid::dlyMix, "Level"},
+             {ModuleId::Delay,
+              "Delay",
+              {{pid::dlyTime, "Time"},
+               {pid::dlyFeedback, "Feedback"},
+               {pid::dlyTone, "Tone"},
+               {pid::dlyMix, "Level"},
                {pid::dlyDuck, "Duck", "Duck: how much the echoes drop while you sing (they come back in the gaps)"}}},
-             {ModuleId::Reverb, "Reverb",
-              {{pid::revSize, "Size"}, {pid::revDamping, "Damping"}, {pid::revWidth, "Width"}, {pid::revMix, "Level"},
-               {pid::revPreDelay, "Pre-Delay"}, {pid::revLowCut, "Low Cut"}, {pid::revHighCut, "High Cut"},
+             {ModuleId::Reverb,
+              "Reverb",
+              {{pid::revSize, "Size"},
+               {pid::revDamping, "Damping"},
+               {pid::revWidth, "Width"},
+               {pid::revMix, "Level"},
+               {pid::revPreDelay, "Pre-Delay"},
+               {pid::revLowCut, "Low Cut"},
+               {pid::revHighCut, "High Cut"},
                {pid::revDuck, "Duck", "Duck: how much the reverb drops while you sing (it blooms in the gaps)"}}}},
             "SPACE  (parallel effects)", 2, 4)
     , limiter(p.getParameters(), ModuleId::Limiter, {{pid::limCeiling, "Ceiling"}, {pid::limRelease, "Release"}}, true)
     , master(p.getParameters())
     , simple(p.getParameters(), p.getChain().getTune())
-    , voiceSetup(p)
 {
-    for (auto* c : std::initializer_list<juce::Component*>{&presetBar, &chainBar, &display, &gate, &deEsser, &compressor, &color,
-                                                           &space, &limiter, &master})
+    for (auto* c : std::initializer_list<juce::Component*>{&presetBar, &chainBar, &display, &gate, &deEsser, &compressor, &color, &space,
+                                                           &limiter, &master})
         content.addAndMakeVisible(c);
     content.addChildComponent(simple);
     content.addAndMakeVisible(cat);
@@ -58,11 +71,10 @@ StageMicEditor::StageMicEditor(StageMicProcessor& p)
     presetBar.onSetUpVoice = [this] { voiceSetup.open(); };
     chainBar.onModuleClicked = [this](ModuleId id) { showModule(id); };
     addAndMakeVisible(content);
-    // Apply the theme after every control exists, so all of them (including the
-    // value boxes under knobs and faders) are rebuilt in StageMic's style.
+    // Apply the theme after every control exists
     setLookAndFeel(&lookAndFeel);
 
-    // Fixed design layout (see header): header, display + master column, strips + effect rows.
+    // Fixed design layout
     constexpr int m = 10, gap = 6;
     presetBar.setBounds(m, 0, designWidth - 2 * m, 48);
     chainBar.setBounds(m, 48, designWidth - 2 * m, 34);
@@ -95,13 +107,13 @@ StageMicEditor::StageMicEditor(StageMicProcessor& p)
     getConstrainer()->setFixedAspectRatio((double)designWidth / designHeight);
     setResizeLimits(designWidth * 6 / 10, designHeight * 6 / 10, designWidth * 2, designHeight * 2);
     applyMode(processor.isAdvancedMode());
-    // The size they chose last time (the window then makes sure it fits the screen).
-    const int width = processor.getEditorWidth() > 0 ? juce::jlimit(designWidth * 6 / 10, designWidth * 2, processor.getEditorWidth()) : designWidth;
+    // The size they chose last time
+    const int width =
+        processor.getEditorWidth() > 0 ? juce::jlimit(designWidth * 6 / 10, designWidth * 2, processor.getEditorWidth()) : designWidth;
     setSize(width, juce::roundToInt(width * (double)designHeight / designWidth));
     sizeRestored = true;
 
-    // First time ever: start with "Set up my voice" (it fixes the gate for noisy
-    // rooms and laptop fans, and the input level). Shown once; Cancel skips it.
+    // First time ever
     if (!processor.hasVoiceSetup() && !processor.wasVoiceSetupOffered())
     {
         processor.setVoiceSetupOffered();
@@ -137,7 +149,7 @@ void StageMicEditor::applyMode(bool advanced)
         c->setVisible(advanced);
     simple.setVisible(!advanced);
     display.setLive(advanced);
-    // Simple mode has no chain bar: the meters start right under the header.
+    // Simple mode has no chain bar
     const int top = advanced ? 88 : 56;
     master.setBounds(master.getX(), top, master.getWidth(), bodyBottom - top);
 }
@@ -147,19 +159,53 @@ void StageMicEditor::showModule(ModuleId id)
     juce::Component* panel = nullptr;
     switch (id)
     {
-        case ModuleId::Gate: panel = &gate; break;
-        case ModuleId::Equalizer: display.select(0); panel = &display; break;
-        case ModuleId::Multiband: display.select(1); panel = &display; break;
-        case ModuleId::Leveler: panel = &master; break;
-        case ModuleId::DeEsser: panel = &deEsser; break;
-        case ModuleId::Compressor: panel = &compressor; break;
-        case ModuleId::Saturation: color.select(0); panel = &color; break;
-        case ModuleId::Exciter: color.select(1); panel = &color; break;
-        case ModuleId::Chorus: space.select(0); panel = &space; break;
-        case ModuleId::Delay: space.select(1); panel = &space; break;
-        case ModuleId::Reverb: space.select(2); panel = &space; break;
-        case ModuleId::Limiter: panel = &limiter; break;
-        case ModuleId::Tune: display.select(2); panel = &display; break;
+        case ModuleId::Gate:
+            panel = &gate;
+            break;
+        case ModuleId::Equalizer:
+            display.select(0);
+            panel = &display;
+            break;
+        case ModuleId::Multiband:
+            display.select(1);
+            panel = &display;
+            break;
+        case ModuleId::Leveler:
+            panel = &master;
+            break;
+        case ModuleId::DeEsser:
+            panel = &deEsser;
+            break;
+        case ModuleId::Compressor:
+            panel = &compressor;
+            break;
+        case ModuleId::Saturation:
+            color.select(0);
+            panel = &color;
+            break;
+        case ModuleId::Exciter:
+            color.select(1);
+            panel = &color;
+            break;
+        case ModuleId::Chorus:
+            space.select(0);
+            panel = &space;
+            break;
+        case ModuleId::Delay:
+            space.select(1);
+            panel = &space;
+            break;
+        case ModuleId::Reverb:
+            space.select(2);
+            panel = &space;
+            break;
+        case ModuleId::Limiter:
+            panel = &limiter;
+            break;
+        case ModuleId::Tune:
+            display.select(2);
+            panel = &display;
+            break;
     }
     if (panel != nullptr)
         flash.show(panel->getBounds());
@@ -167,12 +213,11 @@ void StageMicEditor::showModule(ModuleId id)
 
 void StageMicEditor::refreshFromProcessor(bool evenIfHidden)
 {
-    // Always drain the meters so a stale peak doesn't appear when the window reopens.
+    // Always drain the meters so a stale peak doesn't appear when the window
     const auto inPeak = processor.getInputMeter().takePeak();
     const auto outPeak = processor.getOutputMeter().takePeak();
 
-    // Window closed or minimised: stop the spectrum's audio tap too, so a hidden
-    // window costs the audio thread nothing.
+    // Window closed or minimised
     const bool showing = isShowing() || evenIfHidden;
     if (showing != wasShowing)
     {
@@ -191,13 +236,13 @@ void StageMicEditor::refreshFromProcessor(bool evenIfHidden)
     flash.step();
     master.setLevels(inPeak, outPeak);
     master.setLevelerGain(activity.levelerGainDb);
-    // Saturation and Exciter oversample, which delays only their effect by about 0.1 ms.
+    // Saturation and Exciter oversample
     const auto& chain = processor.getChain();
     const bool oversampling = chain.isModuleActive(ModuleId::Saturation) || chain.isModuleActive(ModuleId::Exciter);
     const bool tuning = chain.isModuleActive(ModuleId::Tune);
-    master.setStatus(juce::String(processor.getPreparedSampleRate() / 1000.0, 1) + " kHz  |  latency "
-                     + (tuning ? (oversampling ? "20.1 ms" : "20 ms") : (oversampling ? "0.1 ms" : "0 ms"))
-                     + "\nPaopoa StageMic v" STAGEMIC_VERSION);
+    master.setStatus(juce::String(processor.getPreparedSampleRate() / 1000.0, 1) + " kHz  |  latency " +
+                     (tuning ? (oversampling ? "20.1 ms" : "20 ms") : (oversampling ? "0.1 ms" : "0 ms")) +
+                     "\nPaopoa StageMic v" STAGEMIC_VERSION);
     if (simple.isVisible())
         simple.tick();
     cat.advance();

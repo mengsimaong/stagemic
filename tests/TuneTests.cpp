@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-// Phase 4: Tune (real-time pitch correction).
+// Phase 4
 #include "AllocationGuard.h"
 #include "TestHelpers.h"
 #include "core/dsp/Tune.h"
@@ -17,11 +17,16 @@ namespace
 {
 constexpr double kRate = 48000.0;
 
-double midiToHz(double midi) { return 440.0 * std::pow(2.0, (midi - 69.0) / 12.0); }
-double hzToMidi(double hz) { return 69.0 + 12.0 * std::log2(hz / 440.0); }
+double midiToHz(double midi)
+{
+    return 440.0 * std::pow(2.0, (midi - 69.0) / 12.0);
+}
+double hzToMidi(double hz)
+{
+    return 69.0 + 12.0 * std::log2(hz / 440.0);
+}
 
-/** A voice-like tone: 24 harmonics under a gentle vowel-ish envelope, with a
-    pitch that may change over time (midiAt gives the pitch at time t). */
+// A voice-like tone
 juce::AudioBuffer<float> voice(std::function<double(double)> midiAt, double seconds, float level = 0.2f)
 {
     juce::AudioBuffer<float> b(2, (int)(kRate * seconds));
@@ -35,9 +40,10 @@ juce::AudioBuffer<float> voice(std::function<double(double)> midiAt, double seco
             const double f = f0 * h;
             if (f > 20000.0)
                 break;
-            // Formant-like bumps around 700 Hz and 2.5 kHz on a falling slope.
-            const double env = 1.0 / h * (1.0 + 2.0 * std::exp(-std::pow((f - 700.0) / 300.0, 2.0))
-                                          + 1.0 * std::exp(-std::pow((f - 2500.0) / 600.0, 2.0)));
+            // Formant-like bumps around 700 Hz and 2.5 kHz on a falling slope
+            const double env =
+                1.0 / h *
+                (1.0 + 2.0 * std::exp(-std::pow((f - 700.0) / 300.0, 2.0)) + 1.0 * std::exp(-std::pow((f - 2500.0) / 600.0, 2.0)));
             v += env * std::sin(phase * h);
         }
         phase += 2.0 * juce::MathConstants<double>::pi * f0 / kRate;
@@ -49,7 +55,7 @@ juce::AudioBuffer<float> voice(std::function<double(double)> midiAt, double seco
     return b;
 }
 
-/** Independent pitch measurement (plain full-rate YIN) of one frame. Returns MIDI, or -1. */
+// Independent pitch measurement of one frame
 double measureMidi(const juce::AudioBuffer<float>& b, int start, int length = 2048)
 {
     const int maxTau = (int)(kRate / 70.0), minTau = (int)(kRate / 1200.0);
@@ -87,7 +93,7 @@ double measureMidi(const juce::AudioBuffer<float>& b, int start, int length = 20
     return hzToMidi(kRate / tau);
 }
 
-/** Median pitch (MIDI) over [from, to) seconds. */
+// Median pitch over [from, to) seconds
 double medianMidi(const juce::AudioBuffer<float>& b, double from, double to)
 {
     std::vector<double> v;
@@ -140,15 +146,15 @@ public:
             const double before = medianMidi(b, 0.5, 1.4);
             processSignal(*p, b);
             const double after = medianMidi(b, 0.5, 1.4);
-            logMessage("note " + juce::String(note) + ": in " + juce::String((before - note) * 100.0, 1) + " cents, out "
-                       + juce::String((after - note) * 100.0, 1) + " cents");
+            logMessage("note " + juce::String(note) + ": in " + juce::String((before - note) * 100.0, 1) + " cents, out " +
+                       juce::String((after - note) * 100.0, 1) + " cents");
             expectWithinAbsoluteError(after, note, 0.05, "within 5 cents");
         }
 
         beginTest("Note jumps and phrase starts never show a wrong note");
         {
             auto p = tuneProcessor(12.0f, 1, 4); // E major, "Pop"
-            // Sung: G#4 (a bit sharp), then a sudden jump up to B4, a breath, then E4.
+            // Sung
             auto b = voice([](double t) { return t < 0.6 ? 68.2 : (t < 1.2 ? 71.25 : 64.3); }, 1.8);
             for (int i = (int)(1.12 * kRate); i < (int)(1.2 * kRate); ++i)
             {
@@ -177,10 +183,7 @@ public:
 
         beginTest("A rough, real-voice-like signal passes through cleanly (no crackle)");
         {
-            // Two similar peaks per cycle (so "the biggest peak" keeps changing), cycle-to-cycle
-            // jitter and shimmer, vibrato and breath noise: what real voices are like and
-            // clean test tones are not. (Found on a real recording: grains then overlapped
-            // out of step, partly cancelled and crackled.)
+            // Two similar peaks per cycle, cycle-to-cycle jitter and shimmer
             juce::Random rng(11);
             const int n = (int)(kRate * 2.0);
             juce::AudioBuffer<float> rough(2, n);
@@ -191,10 +194,11 @@ public:
                 if (phase >= 2.0 * juce::MathConstants<double>::pi)
                 {
                     phase -= 2.0 * juce::MathConstants<double>::pi;
-                    jitter = (rng.nextDouble() - 0.5) * 0.02;  // +-1% period jitter per cycle
+                    jitter = (rng.nextDouble() - 0.5) * 0.02; // +-1% period jitter per cycle
                     shimmer = 1.0 + (rng.nextDouble() - 0.5) * 0.1;
                 }
-                const double f0 = 392.0 * (1.0 + jitter) * std::pow(2.0, (0.3 + 0.2 * std::sin(2.0 * juce::MathConstants<double>::pi * 5.0 * t)) / 12.0);
+                const double f0 =
+                    392.0 * (1.0 + jitter) * std::pow(2.0, (0.3 + 0.2 * std::sin(2.0 * juce::MathConstants<double>::pi * 5.0 * t)) / 12.0);
                 double v = std::sin(phase) + 0.95 * std::sin(2.0 * phase + 1.2) + 0.4 * std::sin(3.0 * phase + 0.4);
                 for (int h = 4; h <= 20; ++h)
                     v += std::sin(h * phase + h) / (h * 1.5);
@@ -206,7 +210,7 @@ public:
             juce::AudioBuffer<float> original;
             original.makeCopyOf(rough);
 
-            // With no correction it must come out the same (only delayed).
+            // With no correction it must come out the same
             auto p = tuneProcessor(0.0f);
             setParam(*p, pid::tuneAmount, 0.0f);
             auto passed = rough;
@@ -229,7 +233,7 @@ public:
             logMessage("rough voice, no correction: 10% worst moments match the input to " + juce::String(worstTenth, 1) + " dB");
             expectGreaterThan(worstTenth, 40.0, "passes through cleanly");
 
-            // With hard correction, the level must stay steady (no partial cancellation).
+            // With hard correction, the level must stay steady
             auto q = tuneProcessor(0.0f);
             auto tuned = rough;
             processSignal(*q, tuned);
@@ -248,8 +252,7 @@ public:
 
         beginTest("Voice = High: vocal fry (every other cycle stronger) doesn't read an octave low");
         {
-            // F#4 sung with fry-like period doubling: alternate cycles 60% louder. The
-            // waveform then truly repeats only every two cycles (F#3).
+            // F#4 sung with fry-like period doubling
             juce::AudioBuffer<float> fry(2, (int)(kRate * 1.5));
             double phase = 0.0;
             const double f0 = midiToHz(66.3);
@@ -282,7 +285,7 @@ public:
 
         beginTest("Key and scale: off-scale notes go to the nearest note in the key");
         {
-            auto p = tuneProcessor(0.0f, 1, 0); // C major
+            auto p = tuneProcessor(0.0f, 1, 0);               // C major
             auto b = voice([](double) { return 66.3; }, 1.5); // F# + 30 cents -> G
             processSignal(*p, b);
             expectWithinAbsoluteError(medianMidi(b, 0.5, 1.4), 67.0, 0.05);
@@ -314,8 +317,8 @@ public:
                 return hi - lo;
             };
             const double hard = spread(0.0f), natural = spread(300.0f);
-            logMessage("vibrato (input 80 cents wide): hard tune " + juce::String(hard * 100.0, 1) + " cents, slow "
-                       + juce::String(natural * 100.0, 1) + " cents");
+            logMessage("vibrato (input 80 cents wide): hard tune " + juce::String(hard * 100.0, 1) + " cents, slow " +
+                       juce::String(natural * 100.0, 1) + " cents");
             expectLessThan(hard, 0.25, "hard tune flattens vibrato");
             expectGreaterThan(natural, 0.5, "slow speed keeps vibrato");
         }
@@ -324,7 +327,7 @@ public:
         {
             auto glideTime = [&](float speed) {
                 auto p = tuneProcessor(speed);
-                // Sung 30 cents flat; the correction takes time to arrive.
+                // Sung 30 cents flat
                 auto b = voice([](double) { return 68.7; }, 1.5);
                 processSignal(*p, b);
                 for (double t = 0.1; t < 1.4; t += 0.01)
@@ -351,7 +354,7 @@ public:
         beginTest("Formant: changes the voice's character, not its pitch");
         {
             auto centroid = [](const juce::AudioBuffer<float>& b) {
-                // Crude spectral balance: high-passed energy over total energy.
+                // Crude spectral balance
                 dsp::Biquad hp;
                 hp.c = dsp::biquad::highpass(kRate, 1500.0, 0.707);
                 double hi = 0.0, all = 0.0;
@@ -371,8 +374,8 @@ public:
                 return std::make_pair(medianMidi(b, 0.5, 1.4), centroid(b));
             };
             const auto normal = run(0.0f), up = run(4.0f), down = run(-4.0f);
-            logMessage("brightness (dB above 1.5 kHz): formant -4 " + juce::String(down.second, 1) + ", 0 "
-                       + juce::String(normal.second, 1) + ", +4 " + juce::String(up.second, 1));
+            logMessage("brightness (dB above 1.5 kHz): formant -4 " + juce::String(down.second, 1) + ", 0 " +
+                       juce::String(normal.second, 1) + ", +4 " + juce::String(up.second, 1));
             expectWithinAbsoluteError(up.first, 60.0, 0.06, "pitch unchanged (formant up)");
             expectWithinAbsoluteError(down.first, 60.0, 0.06, "pitch unchanged (formant down)");
             expectGreaterThan(up.second, normal.second + 1.0, "formant up sounds smaller/brighter");
@@ -381,7 +384,7 @@ public:
 
         beginTest("Formant (fun voices): breaths and \"s\" sounds get the same shift as the voice");
         {
-            // A hiss (an "s"): brightness measured as the energy-weighted centre frequency.
+            // A hiss
             auto centroid = [](const juce::AudioBuffer<float>& b, int from, int count) {
                 juce::dsp::FFT fft(12);
                 const int size = 1 << 12;
@@ -391,10 +394,10 @@ public:
                 {
                     std::fill(data.begin(), data.end(), 0.0f);
                     for (int i = 0; i < size; ++i)
-                        data[(size_t)i] = b.getSample(0, start + i) * (0.5f - 0.5f * std::cos(2.0f * juce::MathConstants<float>::pi * (float)i / (float)size));
+                        data[(size_t)i] = b.getSample(0, start + i) *
+                                          (0.5f - 0.5f * std::cos(2.0f * juce::MathConstants<float>::pi * (float)i / (float)size));
                     fft.performFrequencyOnlyForwardTransform(data.data());
-                    // Within 200 Hz .. 12 kHz, so content near the top of the range
-                    // (which the shift can push out) doesn't skew it.
+                    // Within 200 Hz .. 12 kHz, so content near the top of the range doesn't
                     for (int k = 1; k < size / 2; ++k)
                     {
                         const double f = (double)k * kRate / size;
@@ -430,10 +433,11 @@ public:
                 processSignal(*p, b);
                 const double ratio = centroid(b, (int)kRate / 2, (int)kRate) / dryCentre;
                 const double expected = std::pow(2.0, formant / 12.0);
-                logMessage("formant " + juce::String(formant, 0) + " st: hiss brightness x" + juce::String(ratio, 2) + " (voice x"
-                           + juce::String(expected, 2) + ")");
+                logMessage("formant " + juce::String(formant, 0) + " st: hiss brightness x" + juce::String(ratio, 2) + " (voice x" +
+                           juce::String(expected, 2) + ")");
                 expectWithinAbsoluteError(ratio, expected, 0.12, "the hiss moves with the voice");
-                const float level = juce::Decibels::gainToDecibels(b.getRMSLevel(0, (int)kRate / 2, (int)kRate) / dry.getRMSLevel(0, (int)kRate / 2, (int)kRate));
+                const float level = juce::Decibels::gainToDecibels(b.getRMSLevel(0, (int)kRate / 2, (int)kRate) /
+                                                                   dry.getRMSLevel(0, (int)kRate / 2, (int)kRate));
                 expectWithinAbsoluteError(level, 0.0f, 3.0f, "and keeps its level");
                 expect(allFinite(b));
             }
@@ -467,8 +471,8 @@ public:
                 ref += (double)copy.getSample(0, i - lag) * copy.getSample(0, i - lag);
             }
             const double snr = 10.0 * std::log10(ref / std::max(err, 1e-20));
-            logMessage("noise passes through: " + juce::String(snr, 1) + " dB match with the input delayed by "
-                       + juce::String(dsp::Tune::latencyMs) + " ms");
+            logMessage("noise passes through: " + juce::String(snr, 1) + " dB match with the input delayed by " +
+                       juce::String(dsp::Tune::latencyMs) + " ms");
             expectGreaterThan(snr, 40.0);
         }
 
@@ -500,7 +504,7 @@ public:
                 allocations = guard.count();
             }
             expectEquals((int)allocations, 0, "allocations");
-            // Best of three runs (shared CI machines are noisy).
+            // Best of three runs
             auto q = tuneProcessor(20.0f);
             auto c = voice([](double t) { return 64.0 + 3.0 * std::sin(t); }, 10.0);
             double seconds = 1.0e9;

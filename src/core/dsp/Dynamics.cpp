@@ -18,9 +18,7 @@ inline float peakAcross(float* const* ch, int numChannels, int i) noexcept
 } // namespace
 
 //==============================================================================
-// Gate / expander: below the threshold the voice is turned down gradually
-// (ratio 2:1 = gentle expander, 10:1 = hard gate), never by more than "range".
-// A 40 ms hold keeps word endings and sung note tails from being chopped.
+// Gate / expander
 Gate::Gate(juce::AudioProcessorValueTreeState& s)
     : threshold(param(s, pid::gateThreshold))
     , range(param(s, pid::gateRange))
@@ -82,9 +80,7 @@ void Gate::process(float* const* ch, int numChannels, int n) noexcept
 }
 
 //==============================================================================
-// Auto Level: measures the voice's level over ~300 ms and slowly steers it
-// toward the target (by at most +/- range). It reacts 3x faster when the voice
-// gets louder than when it gets quieter, and freezes during pauses.
+// Auto Level
 Leveler::Leveler(juce::AudioProcessorValueTreeState& s)
     : target(param(s, pid::levTarget))
     , range(param(s, pid::levRange))
@@ -118,7 +114,7 @@ void Leveler::update(bool) noexcept
 
 void Leveler::process(float* const* ch, int numChannels, int n) noexcept
 {
-    constexpr float silenceDb = -50.0f; // below this it's a pause: hold the current gain
+    constexpr float silenceDb = -50.0f; // below this it's a pause
     for (int i = 0; i < n; ++i)
     {
         float sq = 0.0f;
@@ -141,7 +137,6 @@ void Leveler::process(float* const* ch, int numChannels, int n) noexcept
 }
 
 //==============================================================================
-// De-esser (see Dynamics.h for the modes).
 namespace
 {
 constexpr float candidateHz[] = {4500.0f, 5500.0f, 6600.0f, 7800.0f, 9200.0f, 10800.0f};
@@ -203,7 +198,7 @@ void DeEsser::update(bool snap) noexcept
 
     if (autoOn)
     {
-        // Follow the loudest candidate band, but only while something sibilant is happening.
+        // Follow the loudest candidate band
         int loudest = 0;
         for (int i = 1; i < kCandidates; ++i)
             if (candidateEnv[i] > candidateEnv[loudest])
@@ -235,8 +230,8 @@ void DeEsser::process(float* const* ch, int numChannels, int n) noexcept
                 splitter.split(x, c, low[c], high[c]); // high = everything above Freq
             else
             {
-                high[c] = band.process(x, c);           // high = just the "s" band
-                low[c] = x - high[c];                   // everything else (exact reconstruction)
+                high[c] = band.process(x, c); // high = just the "s" band
+                low[c] = x - high[c];         // everything else
             }
             peak = std::max(peak, std::abs(high[c]));
             voicePeak = std::max(voicePeak, std::abs(low[c]));
@@ -251,8 +246,7 @@ void DeEsser::process(float* const* ch, int numChannels, int n) noexcept
 
         envelope = peak + (peak > envelope ? envAttack : envRelease) * (envelope - peak);
         voiceEnvelope = voicePeak + (voicePeak > voiceEnvelope ? voiceAttack : voiceRelease) * (voiceEnvelope - voicePeak);
-        // The threshold follows the body of the voice (set for around -24 dBFS),
-        // so an "s" can never raise its own threshold.
+        // The threshold follows the body of the voice
         const float follow = juce::jlimit(-12.0f, 18.0f, gainToDb(voiceEnvelope) + 24.0f);
         const float over = gainToDb(envelope) - (thresholdDb + follow);
         const float targetDb = over > 0.0f ? -std::min(maxCutDb, over * 0.75f) : 0.0f; // ~4:1
@@ -265,10 +259,6 @@ void DeEsser::process(float* const* ch, int numChannels, int n) noexcept
 }
 
 //==============================================================================
-// Compressor: feed-forward, stereo-linked, 6 dB soft knee. The detector hears
-// the voice through a 100 Hz low cut (so plosives and rumble don't pump it) and
-// measures a short 5 ms RMS level, which sounds smoother on vocals than raw
-// peaks. "Mix" blends in the uncompressed voice (parallel compression).
 Compressor::Compressor(juce::AudioProcessorValueTreeState& s)
     : threshold(param(s, pid::compThreshold))
     , ratio(param(s, pid::compRatio))
@@ -331,8 +321,6 @@ void Compressor::process(float* const* ch, int numChannels, int n) noexcept
 }
 
 //==============================================================================
-// Multiband: Linkwitz-Riley 24 dB/oct crossovers split low | mid | high, each band
-// has its own compressor and output gain. With no compression the bands sum flat.
 MultibandCompressor::MultibandCompressor(juce::AudioProcessorValueTreeState& s)
     : lowCross(param(s, pid::mbLowCross))
     , highCross(param(s, pid::mbHighCross))
@@ -425,10 +413,6 @@ void MultibandCompressor::process(float* const* ch, int numChannels, int n) noex
 }
 
 //==============================================================================
-// Limiter: a fast (0.3 ms) attack and smooth release keep the level under the
-// ceiling without the harshness of an instant gain jump; a soft clipper then
-// catches whatever slips through, so the output can never exceed the ceiling.
-// No lookahead (zero latency).
 Limiter::Limiter(juce::AudioProcessorValueTreeState& s)
     : ceiling(param(s, pid::limCeiling))
     , release(param(s, pid::limRelease))
@@ -455,8 +439,7 @@ void Limiter::update(bool) noexcept
 
 namespace
 {
-// Linear up to 'knee' (as a fraction of the ceiling), then bends smoothly toward
-// the ceiling and never reaches it.
+// Linear up to 'knee', then bends smoothly toward the ceiling and never
 inline float softClip(float x, float ceilingGain) noexcept
 {
     constexpr float knee = 0.88f;

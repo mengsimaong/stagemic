@@ -14,8 +14,8 @@
     shows which function grew;
   * audio, quick look: `stagemic_bench <voice.wav> 6 cost` on both, run alternately (each module alone
     and every preset, best of 5);
-  * window: `STAGEMIC_UI_LIVE=simple` (with `STAGEMIC_UI_PRESET=clean` and without) and
-    `STAGEMIC_UI_LIVE=1` on both test programs.
+  * window: `stagemic_devtools ui-live simple` (with `clean` and without) and
+    `stagemic_devtools ui-live` on both builds.
   Anything slower gets fixed or made optional before it ships. (After 0.4.2: every preset 0.2-1.3%
   *fewer* instructions than 0.4.1, after the EQ's filter loop was rewritten to keep each band in
   registers.) (Nov 2026, against 0.4.1: audio within
@@ -54,7 +54,7 @@ Not every fun voice sounds right yet. To check one by one on a real voice (rende
   software drawing); add an option to turn off animations if it's high.
 * Stress test (tools/StressBench.cpp, `stagemic_bench <voice.wav>`): run it before each release.
 * Before each release also run the tests and `stagemic_bench` built with `-fsanitize=address,undefined`,
-  and `STAGEMIC_UI_LIVE=storm` built with `-fsanitize=thread` (all clean in Nov 2026), and check that
+  and `stagemic_devtools ui-live storm` built with `-fsanitize=thread` (all clean in Nov 2026), and check that
   the Windows CI job is green (a Linux-only call in the test program broke it unnoticed for two commits).
 
 ## Beginner / low-end laptop review (Nov 2026): not done yet
@@ -89,7 +89,8 @@ Not every fun voice sounds right yet. To check one by one on a real voice (rende
 * Doubler (thicker, "two singers" voice).
 * Compressor modes (opto / fast) and auto make-up.
 * Delay tap-tempo; more reverb room types.
-* Vocoder (Phase 4).
-* VST3 plugin rack: load third-party plugins inside the chain (Phase 3).
+* Vocoder.
+* VST3 plugin rack: load third-party plugins inside the chain.
 * OBS hotkeys for presets and module on/off; A/B compare; undo/redo; loudness (LUFS) meter.
-* Release housekeeping: drop the duplicate fixed-name installer from GitHub releases.
+* Done (after 0.5.0): releases no longer carry a duplicate fixed-name installer, and now include
+  PaopoaStageMic-(version)-source.zip.

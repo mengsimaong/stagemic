@@ -1,6 +1,6 @@
 ## Install
 
-1. Download **StageMic-Setup.exe** below.
+1. Download the installer, **StageMic-Setup-(version).exe**, below.
 2. Close OBS Studio.
 3. Run the installer. Windows may show "Windows protected your PC" because it's new and not
    code-signed yet: click **More info → Run anyway**.

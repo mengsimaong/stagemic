@@ -53,10 +53,10 @@ message thread, which means windows are always destroyed on the right thread.
 * StageMic processes the first 1–2 channels (a mono or stereo vocal chain).
   Extra surround channels pass through untouched.
 * **Latency:** an OBS filter cannot report latency to OBS. Any latency
-  StageMic adds (for example hard-tune, Phase 4) will be shown in the UI so
+  StageMic adds (for example hard-tune) will be shown in the UI so
   you can compensate with the source's **Sync Offset**.
 
-## Built-in chain (Phase 2)
+## Built-in chain
 
 ```
 in gain → Gate/Expander → EQ → Auto Level → Compressor → Multiband → Saturation → Exciter → De-Esser
@@ -99,7 +99,7 @@ above -24 dBFS, none below -38 dBFS, 120 ms release), so they bloom in the gaps.
   fall back to their defaults. User presets live in `Documents\StageMic\Presets`.
   Factory presets are defined in code as overrides of the defaults.
 * **State saved by OBS** (version 2) = preset content + the selected preset's name.
-  Version 1 state from Phase 1 loads as the default sound.
+  Version 1 state (from the first releases) loads as the default sound.
 
 ## The window (src/ui)
 
@@ -138,6 +138,6 @@ load, audio flow, clean shutdown and zero leaks. CI runs it on every push.
 ## Reference
 
 The overall approach (one shared JUCE runtime, JUCE on OBS's UI thread,
-out-of-process plugin scanning in Phase 3) follows the open-source
+out-of-process plugin scanning, if a VST3 rack is added) follows the open-source
 [atkAudio OBS plugin](https://github.com/atkAudio/PluginForObsRelease)
 (AGPL-3.0). StageMic's code is written independently.

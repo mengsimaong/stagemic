@@ -46,7 +46,7 @@ Windows 10 or 11 (64-bit), OBS Studio 31 or newer.
 ## Install, in four steps
 
 1. Close OBS (also from the tray icon near the clock).
-2. Run **StageMic-Setup.exe**. If Windows says "Windows protected your PC", click **More info → Run anyway**.
+2. Run the installer (**StageMic-Setup-(version).exe**). If Windows says "Windows protected your PC", click **More info → Run anyway**.
 3. Open OBS → Audio Mixer → three dots next to your mic → **Filters** → **+** → **Paopoa StageMic**.
 4. Click **Open Paopoa StageMic**, then **Set up my voice**.
 

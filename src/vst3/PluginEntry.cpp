@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-// Entry point for the VST3 build: the same engine and editor as the OBS plugin.
+// Entry point for the VST3 build
 #include "core/StageMicProcessor.h"
 
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()

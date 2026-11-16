@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-// Every user-facing StageMic setting: IDs, ranges, defaults and grouping.
+// Every user-facing StageMic setting
 #pragma once
 
 #include <juce_audio_processors/juce_audio_processors.h>
@@ -9,7 +9,7 @@
 namespace stagemic
 {
 
-/** The built-in modules, in their default processing order. */
+// The built-in modules, in their default processing order
 enum class ModuleId : int
 {
     Gate = 0,
@@ -24,7 +24,7 @@ enum class ModuleId : int
     Delay,
     Reverb,
     Limiter,
-    Tune, // added in v0.3: new modules go at the end so saved data stays valid
+    Tune, // added in v0.3
 };
 
 constexpr int kNumModules = 13;
@@ -35,14 +35,13 @@ namespace pid
 inline constexpr const char* inGain = "in_gain";
 inline constexpr const char* outGain = "out_gain";
 
-// Gate
 inline constexpr const char* gateOn = "gate_on";
 inline constexpr const char* gateThreshold = "gate_threshold";
 inline constexpr const char* gateRange = "gate_range";
 inline constexpr const char* gateRelease = "gate_release";
 inline constexpr const char* gateRatio = "gate_ratio";
 
-// Auto Level (vocal leveler)
+// Auto Level
 inline constexpr const char* levOn = "lev_on";
 inline constexpr const char* levTarget = "lev_target";
 inline constexpr const char* levRange = "lev_range";
@@ -50,7 +49,7 @@ inline constexpr const char* levSpeed = "lev_speed";
 
 // Equalizer
 inline constexpr const char* eqOn = "eq_on";
-// One on/off switch per EQ point (1 = Low Cut ... 7 = Tame), for hearing what each one does.
+// One on/off switch per EQ point, for hearing what each one does
 inline constexpr const char* eqPointOn[7] = {"eq_p1_on", "eq_p2_on", "eq_p3_on", "eq_p4_on", "eq_p5_on", "eq_p6_on", "eq_p7_on"};
 inline constexpr const char* eqLowCut = "eq_lowcut";
 inline constexpr const char* eqLowCutSlope = "eq_lowcut_slope"; // 0 = 12 dB/oct, 1 = 24 dB/oct
@@ -59,7 +58,7 @@ inline constexpr const char* eqLowGain = "eq_low_gain";
 inline constexpr const char* eqMidFreq = "eq_mid_freq";
 inline constexpr const char* eqMidGain = "eq_mid_gain";
 inline constexpr const char* eqMidQ = "eq_mid_q";
-// Two more bells for detailed work (0 dB = not in the signal path at all)
+// Two more bells for detailed work
 inline constexpr const char* eqLoMidFreq = "eq_lomid_freq";
 inline constexpr const char* eqLoMidGain = "eq_lomid_gain";
 inline constexpr const char* eqLoMidQ = "eq_lomid_q";
@@ -68,29 +67,27 @@ inline constexpr const char* eqHiMidGain = "eq_himid_gain";
 inline constexpr const char* eqHiMidQ = "eq_himid_q";
 inline constexpr const char* eqHighFreq = "eq_high_freq";
 inline constexpr const char* eqHighGain = "eq_high_gain";
-// Harshness tamer: a dynamic band that dips only while it gets too loud (Max Cut 0 = off)
-// Plosive tamer: high-passes only during "p"/"b" thumps (0 = off)
+// Harshness tamer
 inline constexpr const char* eqPlosive = "eq_plosive";
 inline constexpr const char* eqTameFreq = "eq_tame_freq";
 inline constexpr const char* eqTameThreshold = "eq_tame_threshold";
 inline constexpr const char* eqTameRange = "eq_tame_range";
 
-// Tune (pitch correction)
 inline constexpr const char* tuneOn = "tune_on";
 inline constexpr const char* tuneKey = "tune_key";             // C, C#, ... B
-inline constexpr const char* tuneScale = "tune_scale";         // Chromatic, Major, ...
-inline constexpr const char* tuneSpeed = "tune_speed";         // ms; 0 = instant ("hard tune")
+inline constexpr const char* tuneScale = "tune_scale";         // Chromatic, Major
+inline constexpr const char* tuneSpeed = "tune_speed";         // ms
 inline constexpr const char* tuneAmount = "tune_amount";       // %
 inline constexpr const char* tuneFormant = "tune_formant";     // semitones
 inline constexpr const char* tuneTranspose = "tune_transpose"; // semitones
-inline constexpr const char* tuneVoice = "tune_voice";         // High (female), Mid, Low (male)
+inline constexpr const char* tuneVoice = "tune_voice";         // High, Mid, Low
 
 // De-esser
 inline constexpr const char* dsOn = "ds_on";
 inline constexpr const char* dsFreq = "ds_freq";
 inline constexpr const char* dsThreshold = "ds_threshold";
 inline constexpr const char* dsRange = "ds_range";
-inline constexpr const char* dsMode = "ds_mode"; // 0 = Band (narrow dynamic cut), 1 = Split (everything above Freq)
+inline constexpr const char* dsMode = "ds_mode"; // 0 = Band, 1 = Split
 inline constexpr const char* dsAuto = "ds_auto"; // find the sibilant frequency automatically
 
 // Compressor
@@ -160,13 +157,13 @@ inline constexpr const char* limCeiling = "lim_ceiling";
 inline constexpr const char* limRelease = "lim_release";
 } // namespace pid
 
-/** Describes one module for the UI and for presets. */
+// Describes one module for the UI and for presets
 struct ModuleDescriptor
 {
     ModuleId id;
-    const char* key;          // stable identifier used in saved module order
-    const char* displayName;  // shown in the UI
-    const char* enableParam;  // on/off switch
+    const char* key;                    // stable identifier used in saved module order
+    const char* displayName;            // shown in the UI
+    const char* enableParam;            // on/off switch
     std::array<const char*, 24> params; // knobs, nullptr-terminated
 };
 
@@ -175,7 +172,7 @@ const ModuleDescriptor& describe(ModuleId id);
 
 juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
 
-/** Turns typed text into a value for a control of the given unit (see Parameters.cpp). */
+// Turns typed text into a value for a control of the given unit
 float parseValue(const juce::String& text, int unitIndex);
 
 } // namespace stagemic

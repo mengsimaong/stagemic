@@ -20,9 +20,7 @@ EditorWindow::EditorWindow(const juce::String& title, juce::AudioProcessor& proc
 
 void EditorWindow::fitOnScreen()
 {
-    // Laptops often have little room (1366 x 768, or 1920 x 1080 at 125-150%
-    // scaling): shrink the window so all of it, including the resize corner,
-    // is on screen, on the screen where the user clicked "Open".
+    // Laptops often have little room
     const auto& displays = juce::Desktop::getInstance().getDisplays();
     const auto* display = displays.getDisplayForPoint(juce::Desktop::getInstance().getMainMouseSource().getScreenPosition());
     if (display == nullptr)
@@ -37,8 +35,8 @@ void EditorWindow::fitOnScreen()
     const auto area = display->userBounds.toNearestInt().reduced(margin);
     if (auto* content = getContentComponent())
     {
-        const double fit = juce::jmin((double)area.getWidth() / content->getWidth(),
-                                      (double)(area.getHeight() - titleBar) / content->getHeight());
+        const double fit =
+            juce::jmin((double)area.getWidth() / content->getWidth(), (double)(area.getHeight() - titleBar) / content->getHeight());
         if (fit < 1.0)
             content->setSize(juce::roundToInt(content->getWidth() * fit), juce::roundToInt(content->getHeight() * fit));
     }

@@ -20,7 +20,6 @@ target_sources(
     TestHelpers.h
 )
 stagemic_configure_juce_target(stagemic_tests)
-target_compile_definitions(stagemic_tests PRIVATE JUCE_MODAL_LOOPS_PERMITTED=1) # for the live UI benchmark
 target_include_directories(stagemic_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
 
 add_test(NAME stagemic_tests COMMAND stagemic_tests)

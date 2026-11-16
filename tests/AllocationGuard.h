@@ -6,8 +6,7 @@
 namespace stagemic::test
 {
 
-/** Counts heap allocations made on the current thread while in scope.
-    Used to prove the audio path never allocates (which could cause dropouts). */
+// Counts heap allocations made on the current thread while in scope
 class AllocationGuard
 {
 public:

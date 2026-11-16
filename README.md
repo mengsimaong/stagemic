@@ -1,67 +1,87 @@
 # Paopoa StageMic
 
-**One OBS filter, one window: a clean, fun karaoke mic for streamers and VTubers.**
-No DAW, and no stack of ten separate OBS filters.
-
-> **Status: Phase 2 (built-in effects + presets), with a one-click Windows installer.** Next up: sound-quality round tuned on a real voice.
+A vocal chain for OBS Studio, in one audio filter and one window: noise gate, EQ, de-esser,
+compressor, warmth, reverb, echo and real-time pitch correction. Made for singing streams, and
+just as useful for talking, gaming and ASMR.
 
 ![The StageMic window](docs/images/stagemic-window.png)
 
-## Goals
+**Download:** [mengsimaong.itch.io/paopoa-stagemic](https://mengsimaong.itch.io/paopoa-stagemic)
+(Windows 10/11, OBS Studio 31 or newer). Free, no account needed.
+Installing and troubleshooting: [docs/INSTALL.md](docs/INSTALL.md).
 
-* **Native OBS plugin.** It appears in OBS's own filter list. It is not a VST2 loaded through OBS's old VST filter.
-* **Super lightweight.** Modules that are switched off use no CPU. The default sound uses about 1% of one CPU core; even with every module on (including the oversampled Warmth and Air) it's under 4%. CI measures this on every change.
-* **Zero latency.** The voice itself is never delayed; every effect works without lookahead buffers (tests enforce it). Warmth and Air (saturation and exciter) are oversampled for clean, alias-free harmonics, which delays only their added colour by about 0.1 ms while they're on. Pitch correction (Tune) adds 20 ms while it is switched on, and only then: it has to hear a cycle or two of the voice before it can correct it. OBS's Sync Offset can line the video up if needed.
-* **Safe for live audio.** No clicks when switching effects or presets, and no memory allocation on the audio thread (enforced by tests).
+## What it does
 
-## Features
+* **Simple and Advanced modes.** Simple shows the few controls that matter with plain labels;
+  Advanced shows every module, a 7-point EQ over a live spectrum, multiband compression and a
+  re-orderable signal chain. Switching never changes the sound.
+* **Set up my voice.** An 11-second measurement sets input gain, the noise gate (including for
+  noisy rooms and laptop fans) and the de-esser frequency for the mic in use.
+* **Pitch correction** from natural to the hard robotic effect: key, scale, speed, amount,
+  formant and transpose, with a live pitch graph.
+* **Presets** for singing, talking, ASMR and fun voices; save, import and export your own
+  (`.stagemicpreset` files).
+* **Beginner help:** a level read-out in plain words ("Too quiet", "Mic is clipping") and a
+  "Hold: hear before" button to compare with the untouched mic.
 
-| | Feature | Phase | Status |
-|---|---|---|---|
-| ✅ | OBS filter, window, automatic Windows builds | 1 | done |
-| ✅ | Gate, EQ, De-Esser, Compressor, **Multiband**, **Saturation**, **Chorus**, Delay, Reverb, Limiter | 2 | in testing |
-| 🔧 | Warmth (saturation: Tube / Tape / Console, 4x oversampled) and Air (exciter) | 2.6 | built; tuning on a real voice next |
-| 🔧 | De-esser: Band mode (narrow dynamic cut), Split mode, Auto frequency, Listen | 2.6 | built; tuning on a real voice next |
-| ✅ | **Re-order the chain** by dragging modules in the chain bar (Limiter stays last), one-click "Recommended order" | 2.6 | done |
-| 🔧 | Sound-quality round: Auto Level, parallel effect sends with ducking, new plate-style reverb with pre-delay/filters, smoother compressor, relative de-esser, expander, 24 dB/oct low cut, softer limiter, saturation character | 2.6 | built; tuning on a real voice next |
-| ✅ | Presets: 6 factory presets, Save / Save As / Delete, Import / Export `.stagemicpreset` files | 2 | in testing |
-| 🔧 | "Set up my voice": 11-second guided measurement sets Input Gain, Gate and De-Ess frequency for your mic (kept across presets); chain bar with family colours, live activity, on/off and click-to-show | 2.7 | built; needs a real-mic check |
-| 🔧 | Harshness tamer (EQ point 7): a dynamic band that dips 1.5–6 kHz only while a belt gets harsh, level-independent; off until Max Cut is raised | 2.7 | built; tune on her voice |
-| 🔧 | Plosive tamer (EQ "Pops"): a high-pass that sweeps up to 160 Hz only during "p"/"b" thumps; zero latency, sung low notes untouched; off at 0 % | 2.7 | built; tune on her voice |
-| ✅ | One-click Windows installer + simple download page | 2.5 | done |
-| | Third-party **VST3** plugin rack: safe scanning, chaining, editor windows, saved in presets | 3 | |
-| 🔧 | Real-time Tune: pitch correction with key + 7 scales, Speed (0 ms = hard robotic tune), Amount, Formant, Pitch (transpose), live pitch graph, Hard / Pop / Melodic / Natural styles and three Tune presets | 4 | built; needs a real-voice listen |
-| | Robotic voice / vocoder | 4 | |
-| | Custom dark UI: modular panels, big master meter, preset browser, light/dark toggle | 5 | |
+## Performance and latency
 
-**Why VST3 for the plugin rack (not VST2):** Steinberg stopped licensing the
-VST2 SDK in 2018, while VST3 is openly licensed. Almost every current vocal
-plugin ships as VST3, and VST3 can skip processing during silence. VST2 loading
-could be added later if a must-have plugin only exists as VST2.
+* **Zero latency** through the chain: no effect uses a lookahead buffer. The exceptions are
+  explicit: pitch correction adds 20 ms while it is switched on, and the oversampled Warmth and
+  Air add about 0.1 ms to their own colour only.
+* **Light:** modules that are off cost nothing, and an EQ band that is flat or off is skipped.
+  The default sound uses about 1% of one CPU core; every module at once stays well under 10%.
+* **Safe on the audio thread:** no memory allocation, no locks, no clicks when switching effects
+  or presets.
 
-## Install
+## How it is tested
 
-**[Download the installer from itch.io](https://mengsimaong.itch.io/paopoa-stagemic)**, close OBS, run it. Details: [docs/INSTALL.md](docs/INSTALL.md).
+Every push builds and tests on Windows and Linux (GitHub Actions), and loads the filter into a
+real OBS instance to check that audio flows.
 
-## Building it yourself
+* **Unit tests** (`tests/`, about 80 groups) drive the engine exactly as OBS does. Among them:
+  bit-exact pass-through when everything is off, no allocation on the audio thread, no clicks on
+  parameter sweeps and on/off switches, the drawn EQ curve within 0.75 dB of the measured
+  response, pitch correction landing on the note across the vocal range, and the window driven
+  with real mouse events.
+* **Stress test** (`stagemic_bench`): CPU per module and preset in OBS-sized blocks, plus abuse
+  cases (NaN input, full-scale square waves, knob storms, preset hopping, odd block sizes, long
+  silence after loud sound).
+* **Before each release:** the tests and the stress test under AddressSanitizer and
+  UndefinedBehaviorSanitizer, the live window with audio on its own thread under ThreadSanitizer,
+  and an instruction-count comparison (valgrind) against the previous release so nothing gets
+  slower.
 
-You don't need to: GitHub Actions builds Windows binaries on every push. If you want to:
+## Building
 
-* **Windows:** Visual Studio 2022 with the C++ workload, and CMake 3.28+.
+You don't need to build it yourself: GitHub Actions produces the Windows installer.
+
+* **Windows:** Visual Studio 2022 with the C++ workload and CMake 3.28 or newer.
   ```
   cmake --preset windows-x64
   cmake --build --preset windows-x64
   ```
   The first configure downloads and builds the OBS libraries (about 10 minutes).
-* **Linux (development):** `apt install libobs-dev obs-studio` plus JUCE's
-  usual dependencies (see `.github/workflows/build.yml`), then
-  `cmake --preset linux && cmake --build --preset linux`.
-* **Engine and tests only (no OBS):** `cmake --preset engine-only`.
+* **Linux (development):** `apt install libobs-dev obs-studio` plus JUCE's usual dependencies
+  (see `.github/workflows/build.yml`), then `cmake --preset linux && cmake --build --preset linux`.
+* **Engine, tests and tools only (no OBS):** `cmake --preset engine-only`.
 
-How it fits together: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+How the pieces fit together: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). The published methods behind
+the audio processing: [docs/ALGORITHMS.md](docs/ALGORITHMS.md).
+
+## Project layout
+
+| Folder | Contents |
+|---|---|
+| `src/core` | The audio engine: processor, parameters, presets, voice analysis |
+| `src/core/dsp` | The modules: gate, EQ, dynamics, effects, pitch correction, safety limiter |
+| `src/ui` | The window (JUCE components) |
+| `src/obs` | The OBS filter and the JUCE message thread inside OBS |
+| `tests` | Unit tests |
+| `tools` | `stagemic_render` (render presets to WAV), `stagemic_bench` (stress test), `stagemic_devtools` (screenshots, artwork, live window measurements) |
 
 ## License
 
-AGPL-3.0-or-later: free for everyone to use, including on monetized streams.
-If you distribute a modified version, you must share its source code too. See
-[LICENSE](LICENSE) and [THIRD_PARTY.md](THIRD_PARTY.md).
+AGPL-3.0-or-later: free to use, including on monetized streams. If you distribute a modified
+version, you must share its source code too. Built with the AGPL edition of JUCE.
+See [LICENSE](LICENSE) and [THIRD_PARTY.md](THIRD_PARTY.md).

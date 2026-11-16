@@ -70,7 +70,6 @@ jobs:
           $version = (Get-Content buildspec.json -Raw | ConvertFrom-Json).version
           & $iscc "/DAppVersion=$version" "/DSourceDir=$PWD\package" "/O$PWD\installer-out" installer\stagemic.iss
           if ($LASTEXITCODE -ne 0) { throw "Installer build failed" }
-          Copy-Item "installer-out\StageMic-Setup-$version.exe" "installer-out\StageMic-Setup.exe"
           Get-ChildItem installer-out
 
       - name: Upload plugin files
@@ -128,6 +127,13 @@ jobs:
       - name: Zip the manual-install files
         if: steps.version.outputs.new == 'true'
         run: cd manual && zip -r "../release/StageMic-${{ steps.version.outputs.tag }}-windows-x64-manual.zip" .
+
+      - name: Zip the source code
+        if: steps.version.outputs.new == 'true'
+        run: |
+          name="PaopoaStageMic-${{ steps.version.outputs.tag }}-source"
+          name="${name/-v/-}"
+          git archive --format=zip --prefix="${name}/" -o "release/${name}.zip" HEAD
 
       - name: Create GitHub release
         if: steps.version.outputs.new == 'true'

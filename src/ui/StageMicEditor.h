@@ -3,22 +3,18 @@
 
 #include "core/StageMicProcessor.h"
 #include "ui/ChainBar.h"
-#include "ui/VoiceSetup.h"
-#include "ui/SimpleView.h"
-#include "ui/NeonCat.h"
 #include "ui/Displays.h"
 #include "ui/MasterPanel.h"
+#include "ui/NeonCat.h"
 #include "ui/PresetBar.h"
+#include "ui/SimpleView.h"
 #include "ui/Strips.h"
 #include "ui/Theme.h"
+#include "ui/VoiceSetup.h"
 
 namespace stagemic
 {
 
-/** The StageMic window: one compact screen with every module visible.
-
-    Everything is laid out at a fixed design size (1120 x 800) inside 'content',
-    which is scaled as a whole when the window is resized. */
 class StageMicEditor final
     : public juce::AudioProcessorEditor
     , private juce::Timer
@@ -28,8 +24,7 @@ public:
     static constexpr int designHeight = 832;
     static constexpr int footerHeight = 32; // where the cat walks
     static constexpr int bodyBottom = designHeight - footerHeight;
-    /** How often meters, graphs and the cat update. 20 is smooth for meters and keeps
-        the window light (it runs on OBS's own interface thread). */
+    // How often meters, graphs and the cat update
     static constexpr int refreshRateHz = 20;
 
     explicit StageMicEditor(StageMicProcessor&);
@@ -38,11 +33,10 @@ public:
     void paint(juce::Graphics&) override;
     void resized() override;
 
-    /** Pulls meters/spectrum from the processor now (the timer does this 30x a second).
-        Public so tools can render screenshots. */
+    // Pulls meters/spectrum from the processor now
     void refreshFromProcessor(bool evenIfHidden = false);
 
-    /** 0 = EQ, 1 = Multiband. */
+    // 0 = EQ, 1 = Multiband
     void showDisplayTab(int tab) { display.select(tab); }
     VoiceSetup& getVoiceSetup() { return voiceSetup; }
 
@@ -53,12 +47,18 @@ private:
     theme::LookAndFeel lookAndFeel;
     juce::TooltipWindow tooltips{this, 700};
 
-    /** Briefly outlines the panel a chain chip was clicked for. */
+    // Briefly outlines the panel a chain chip was clicked for
     struct Flash final : juce::Component
     {
         Flash() { setInterceptsMouseClicks(false, false); }
-        // Hidden while idle, so it costs nothing on the frames when nothing flashes.
-        void show(juce::Rectangle<int> r) { target = r; alpha = 1.0f; setVisible(true); repaint(); }
+        // Hidden while idle, so it costs nothing on the frames when nothing
+        void show(juce::Rectangle<int> r)
+        {
+            target = r;
+            alpha = 1.0f;
+            setVisible(true);
+            repaint();
+        }
         bool step()
         {
             if (alpha <= 0.0f)
@@ -71,7 +71,8 @@ private:
         }
         void paint(juce::Graphics& g) override
         {
-            if (alpha <= 0.0f) return;
+            if (alpha <= 0.0f)
+                return;
             g.setColour(juce::Colour(0xff6aa9ff).withAlpha(alpha));
             g.drawRoundedRectangle(target.toFloat().reduced(1.0f), 8.0f, 2.5f);
         }

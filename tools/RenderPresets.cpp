@@ -1,17 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-//
-// stagemic_render: run a recording through StageMic offline, once per preset,
-// so presets can be judged by ear without OBS.
-//
-//   stagemic_render <input.wav|flac|aiff|mp3> <output-folder> [preset names or .stagemicpreset files...]
-//
-// A preset can carry changes after '@', applied after it loads, e.g.
-//   "Hard Tune@tune_key=11,tune_scale=1"   (Hard Tune in B major)
-//
-// With no presets given, every factory preset is rendered. Also writes the
-// untouched input ("00 Dry.wav") for comparison. Audio is processed exactly as
-// in OBS: same engine, 480-sample blocks, stereo (a mono file is duplicated
-// to both channels, as OBS does with a mono mic).
+// stagemic_render
 
 #include "core/StageMicProcessor.h"
 #include "core/presets/PresetManager.h"
@@ -36,10 +24,8 @@ bool writeWav(const juce::File& file, const juce::AudioBuffer<float>& audio, dou
         return false;
 
     juce::WavAudioFormat wav;
-    auto writer = wav.createWriterFor(stream, juce::AudioFormatWriterOptions()
-                                                  .withSampleRate(sampleRate)
-                                                  .withNumChannels(audio.getNumChannels())
-                                                  .withBitsPerSample(24));
+    auto writer = wav.createWriterFor(
+        stream, juce::AudioFormatWriterOptions().withSampleRate(sampleRate).withNumChannels(audio.getNumChannels()).withBitsPerSample(24));
     return writer != nullptr && writer->writeFromAudioSampleBuffer(audio, 0, audio.getNumSamples());
 }
 
@@ -137,8 +123,8 @@ int main(int argc, char* argv[])
             processor.processBlock(view, midi);
         }
 
-        const auto name = juce::String(index++).paddedLeft('0', 2) + " " + processor.getCurrentPresetName()
-                        + (changes.isNotEmpty() ? " (" + changes + ")" : juce::String());
+        const auto name = juce::String(index++).paddedLeft('0', 2) + " " + processor.getCurrentPresetName() +
+                          (changes.isNotEmpty() ? " (" + changes + ")" : juce::String());
         if (!writeWav(outDir.getChildFile(juce::File::createLegalFileName(name) + ".wav"), audio, sampleRate))
             return fail("could not write output for " + name);
 

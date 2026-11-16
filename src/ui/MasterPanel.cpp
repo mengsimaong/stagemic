@@ -25,8 +25,8 @@ MasterPanel::MasterPanel(APVTS& s)
             k->setAlpha(levelPower.getToggleState() ? 1.0f : 0.4f);
         repaint(levelArea);
     };
-    for (auto* c : std::initializer_list<juce::Component*>{&inMeter, &outMeter, &levelPower, &levelTarget, &levelRange,
-                                                           &levelSpeed, &inGain, &outGain, &beforeButton})
+    for (auto* c : std::initializer_list<juce::Component*>{&inMeter, &outMeter, &levelPower, &levelTarget, &levelRange, &levelSpeed,
+                                                           &inGain, &outGain, &beforeButton})
         addAndMakeVisible(c);
     beforeButton.setTooltip("Hold to hear your mic without StageMic, let go to hear it with. (Your stream hears it too.)");
     beforeButton.onStateChange = [this] {
@@ -52,8 +52,7 @@ void MasterPanel::setLevelerGain(float db)
 
 void MasterPanel::updateAdvice(float inPeak, float outPeak)
 {
-    // Plain-words advice from the last 4 seconds. Alarms (clipping, too loud) stay up
-    // for 3 seconds so they can be read.
+    // Plain-words advice from the last 4 seconds
     recentIn[(size_t)adviceTick] = inPeak;
     recentOut[(size_t)adviceTick] = outPeak;
     adviceTick = (adviceTick + 1) % kAdviceTicks;
@@ -66,7 +65,7 @@ void MasterPanel::updateAdvice(float inPeak, float outPeak)
 
     juce::String text;
     juce::Colour colour;
-    if (inPeak >= 0.989f) // -0.1 dBFS: the mic itself is overloading, before StageMic
+    if (inPeak >= 0.989f) // -0.1 dBFS: the mic itself is overloading
     {
         text = "Mic is clipping: turn its gain down";
         alarmHold = 60;
@@ -115,7 +114,7 @@ void MasterPanel::setLevels(float inPeak, float outPeak)
     outMeter.setLevel(outPeak);
     updateAdvice(inPeak, outPeak);
 
-    // Numeric peak read-outs hold the highest value for ~2 s.
+    // Numeric peak read-outs hold the highest value for ~2 s
     const float inDb = juce::Decibels::gainToDecibels(inPeak, -100.0f);
     const float outDb = juce::Decibels::gainToDecibels(outPeak, -100.0f);
     if (--peakHoldTicks <= 0 || inDb > inPeakDb || outDb > outPeakDb)
@@ -175,7 +174,6 @@ void MasterPanel::paint(juce::Graphics& g)
         g.drawText(juce::String(db), juce::Rectangle<float>(cx - 14.0f, y - 6.0f, 28.0f, 12.0f), juce::Justification::centred);
     }
 
-    // Auto Level section: frame, title and what it's doing right now.
     const auto la = levelArea.toFloat();
     g.setColour(theme::panelRaised.withAlpha(0.6f));
     g.fillRoundedRectangle(la, 5.0f);
@@ -187,7 +185,7 @@ void MasterPanel::paint(juce::Graphics& g)
     {
         g.setColour(std::abs(levelerDb) < 0.05f ? theme::dimText : theme::reduction);
         g.setFont(theme::font(10.5f, false));
-        // In words: which way it's turning the voice right now.
+        // In words
         const int amount = juce::roundToInt(std::abs(levelerDb));
         g.drawText(amount == 0 ? juce::String("steady") : (levelerDb > 0.0f ? "up " : "down ") + juce::String(amount) + " dB",
                    la.withHeight(24.0f).withTrimmedRight(8.0f), juce::Justification::centredRight);

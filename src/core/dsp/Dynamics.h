@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-// Gate/Expander, Auto Level, De-Esser, Compressor, Multiband Compressor and Limiter.
-// All zero-latency: no lookahead buffers.
+// Gate/Expander, Auto Level, De-Esser, Compressor
 #pragma once
 
 #include "core/dsp/Module.h"
@@ -12,7 +11,7 @@ class Gate final : public Module
 {
 public:
     explicit Gate(juce::AudioProcessorValueTreeState&);
-    /** Current gate gain (1 = open). Any thread. */
+    // Current gate gain
     float getGain() const noexcept { return gainMeter.load(std::memory_order_relaxed); }
     void prepare(double sampleRate, int numChannels) override;
     void reset() noexcept override;
@@ -29,14 +28,10 @@ private:
     std::atomic<float> gainMeter{1.0f};
 };
 
-/** Auto Level: a slow "vocal rider" that nudges the voice toward a target
-    level, so quiet talking and loud singing end up closer together before the
-    compressor. It holds still during pauses so it never pumps up room noise. */
 class Leveler final : public Module
 {
 public:
     explicit Leveler(juce::AudioProcessorValueTreeState&);
-    /** Current gain change in dB (positive = boosting). Any thread. */
     float getGainDb() const noexcept { return gainMeter.load(std::memory_order_relaxed); }
     void prepare(double sampleRate, int numChannels) override;
     void reset() noexcept override;
@@ -52,19 +47,12 @@ private:
     std::atomic<float> gainMeter{0.0f};
 };
 
-/** De-esser.
-      Band  (default) - cuts only a narrow band around the "s" frequency, so the
-                        voice keeps its air and sparkle (dynamic-EQ style).
-      Split           - turns down everything above the frequency (for very harsh mics).
-    The threshold follows the body of the voice, so talking and loud singing are
-    treated alike. Auto finds the sibilant frequency (4-11 kHz) by itself.
-    Listen outputs only what the de-esser is listening to, for tuning by ear. */
 class DeEsser final : public Module
 {
 public:
     DeEsser(juce::AudioProcessorValueTreeState&, const std::atomic<bool>& listen);
     float getGainReductionDb() const noexcept { return grMeter.load(std::memory_order_relaxed); }
-    /** The frequency in use (the detected one when Auto is on). Any thread. */
+    // The frequency in use
     float getFrequency() const noexcept { return freqMeter.load(std::memory_order_relaxed); }
     void prepare(double sampleRate, int numChannels) override;
     void reset() noexcept override;
@@ -79,8 +67,8 @@ private:
     const std::atomic<bool>& listen;
     double sr = 48000.0;
     BlockSmoothed freqSmooth;
-    LinkwitzRiley splitter; // Split mode: low | high, in phase with each other
-    Biquad band;            // Band mode: constant-0dB band-pass around the "s"
+    LinkwitzRiley splitter; // Split mode
+    Biquad band;            // Band mode
     Biquad candidates[kCandidates];
     float candidateEnv[kCandidates]{}, candidateAttack = 0.0f, candidateRelease = 0.0f;
     float detectedFreq = 6500.0f;
@@ -101,14 +89,13 @@ public:
     void update(bool snap) noexcept override;
     void process(float* const* channels, int numChannels, int numSamples) noexcept override;
 
-    /** Current gain reduction in dB (>= 0), for meters. Any thread. */
     float getGainReductionDb() const noexcept { return grMeter.load(std::memory_order_relaxed); }
 
 private:
     std::atomic<float>*threshold, *ratio, *attack, *release, *makeup, *mix;
     double sr = 48000.0;
     GainSmoother gr;
-    Biquad detectorLowCut;      // the detector ignores bass and plosives ("sidechain HPF")
+    Biquad detectorLowCut; // the detector ignores bass and plosives
     float meanSquare = 0.0f, rmsCoef = 0.0f;
     float thresholdDb = 0.0f, ratioValue = 1.0f;
     BlockSmoothed makeupDb, mixAmount;
@@ -134,9 +121,9 @@ private:
 
     BlockSmoothed lowCrossSmooth, highCrossSmooth;
     BlockSmoothed bandGainDb[kBands];
-    LinkwitzRiley splitLow;     // input -> low | rest
-    LinkwitzRiley splitHigh;    // rest  -> mid | high
-    LinkwitzRiley lowPhaseFix;  // keeps the low band phase-aligned with mid + high
+    LinkwitzRiley splitLow;    // input -> low | rest
+    LinkwitzRiley splitHigh;   // rest -> mid | high
+    LinkwitzRiley lowPhaseFix; // keeps the low band phase-aligned with mid + high
     GainSmoother gr[kBands];
     float thresholdDb[kBands]{};
     float ratioValue = 1.0f;

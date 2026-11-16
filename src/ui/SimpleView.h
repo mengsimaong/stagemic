@@ -10,8 +10,7 @@
 namespace stagemic
 {
 
-/** One module in Simple mode: its on/off square, its name, one or two big
-    knobs for what matters most, and a one-line explanation. */
+// One module in Simple mode
 class SimpleTile final : public juce::Component
 {
 public:
@@ -32,9 +31,6 @@ private:
     std::vector<std::unique_ptr<ValueKnob>> knobs;
 };
 
-/** Simple mode: the few controls that matter most, big and uncluttered.
-    Every control is the same setting as in Advanced mode, so switching modes
-    never changes the sound. */
 class SimpleView final : public juce::Component
 {
 public:

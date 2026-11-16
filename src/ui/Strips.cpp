@@ -11,7 +11,7 @@ namespace
 constexpr int knobW = 58;
 constexpr int knobH = 72;
 
-/** Places items centred in a grid inside area. */
+// Places items centred in a grid inside area
 void placeGrid(juce::Rectangle<int> area, std::initializer_list<juce::Component*> items, int columns)
 {
     const int rows = ((int)items.size() + columns - 1) / columns;
@@ -26,7 +26,7 @@ void placeGrid(juce::Rectangle<int> area, std::initializer_list<juce::Component*
     }
 }
 
-/** Fader on the left, a single column of knobs on the right. */
+// Fader on the left, a single column of knobs on the right
 void faderWithKnobColumn(juce::Rectangle<int> area, juce::Component& fader, juce::Component* meter,
                          std::initializer_list<juce::Component*> knobs)
 {
@@ -67,7 +67,6 @@ void GateStrip::updateActivity(const dsp::VocalChain::Activity& a)
 
 void GateStrip::paintOverChildren(juce::Graphics& g)
 {
-    // Small LED in the header: lit while the voice passes through (not being turned down).
     const auto led = juce::Rectangle<float>(8.0f, 8.0f).withCentre({(float)getWidth() - 14.0f, headerHeight * 0.5f});
     const bool open = isOn() && gateGain > 0.7f;
     g.setColour(open ? theme::meterGreen : theme::background);
@@ -116,8 +115,7 @@ void DeEsserStrip::layoutContent(juce::Rectangle<int> area)
 void DeEsserStrip::updateActivity(const dsp::VocalChain::Activity& a)
 {
     reduction.setReduction(a.deEsserReductionDb);
-    const auto text = autoButton.getToggleState() ? "Auto " + juce::String(a.deEsserFrequency / 1000.0f, 1) + "k"
-                                                  : juce::String("Auto");
+    const auto text = autoButton.getToggleState() ? "Auto " + juce::String(a.deEsserFrequency / 1000.0f, 1) + "k" : juce::String("Auto");
     if (autoButton.getButtonText() != text)
         autoButton.setButtonText(text);
     if (listenButton.getToggleState() != chain.getDeEsserListen())
@@ -267,8 +265,8 @@ void TabbedModules::resized()
         return;
     const int columns = juce::jmin(maxColumns, (int)controls.size());
     const int rows = ((int)controls.size() + columns - 1) / columns;
-    const auto grid = area.withSizeKeepingCentre(juce::jmin(area.getWidth(), columns * (knobW + 10)),
-                                                 juce::jmin(area.getHeight(), rows * (knobH + 8)));
+    const auto grid =
+        area.withSizeKeepingCentre(juce::jmin(area.getWidth(), columns * (knobW + 10)), juce::jmin(area.getHeight(), rows * (knobH + 8)));
     const int cellW = grid.getWidth() / columns, cellH = grid.getHeight() / rows;
     for (size_t i = 0; i < controls.size(); ++i)
         controls[i]->setBounds(juce::Rectangle<int>(grid.getX() + (int)(i % (size_t)columns) * cellW,
